@@ -10,6 +10,7 @@ require "chunky_png/canvas/data_url_importing"
 require "chunky_png/canvas/operations"
 require "chunky_png/canvas/drawing"
 require "chunky_png/canvas/resampling"
+require "chunky_png/canvas/seam_carving"
 require "chunky_png/canvas/masking"
 
 module ChunkyPNG
@@ -46,6 +47,7 @@ module ChunkyPNG
     include Operations
     include Drawing
     include Resampling
+    include SeamCarving
     include Masking
 
     # @return [Integer] The number of columns in this canvas
