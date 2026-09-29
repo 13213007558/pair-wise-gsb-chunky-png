@@ -7,6 +7,12 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add <tt>ChunkyPNG::Canvas::Quantization</tt> with <tt>Canvas#quantize</tt> and
+  <tt>Canvas#quantize_to_palette</tt> to reduce an image to at most N colors using
+  median cut quantization or a caller provided palette, with optional
+  Floyd-Steinberg dithering, alpha-aware color distances and deterministic,
+  reproducible results.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

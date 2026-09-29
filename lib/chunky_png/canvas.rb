@@ -11,6 +11,7 @@ require "chunky_png/canvas/operations"
 require "chunky_png/canvas/drawing"
 require "chunky_png/canvas/resampling"
 require "chunky_png/canvas/masking"
+require "chunky_png/canvas/quantization"
 
 module ChunkyPNG
   # The ChunkyPNG::Canvas class represents a raster image as a matrix of
@@ -47,6 +48,7 @@ module ChunkyPNG
     include Drawing
     include Resampling
     include Masking
+    include Quantization
 
     # @return [Integer] The number of columns in this canvas
     attr_reader :width
