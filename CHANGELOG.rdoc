@@ -7,6 +7,14 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Added ChunkyPNG::Canvas16, an explicit 16-bit image representation that can
+  read and write 16-bit grayscale, grayscale+alpha, truecolor and
+  truecolor+alpha PNG images (including filtering and Adam7 interlacing)
+  without discarding the low bytes of the samples. Conversion to the 8-bit
+  ChunkyPNG::Canvas is explicit via Canvas16#to_canvas, which takes a
+  rounding rule (:down, :up or :nearest); use ChunkyPNG::Canvas16.from_canvas
+  for the reverse conversion.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 
