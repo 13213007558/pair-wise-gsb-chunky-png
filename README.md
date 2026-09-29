@@ -14,6 +14,8 @@ memory leaking image library.
 - Decodes any image that the PNG standard allows. This includes all standard
   color modes, all bit depths, all transparency, and interlacing and filtering
   options.
+- Keeps 16-bit samples exact in `ChunkyPNG::Canvas16`; convert explicitly to
+  `ChunkyPNG::Canvas` to resample to 8-bit channels.
 - Encodes images supports all color modes (true color, grayscale, and indexed)
   and transparency for all these color modes. The best color mode will be
   chosen automatically, based on the amount of used colors.
@@ -56,6 +58,10 @@ image.save('with_metadata.png') # Overwrite file
 # Low level access to PNG chunks
 png_stream = ChunkyPNG::Datastream.from_file('filename.png')
 png_stream.each_chunk { |chunk| p chunk.type }
+
+# Preserve 16-bit samples; the regular Canvas remains 8-bit RGBA
+image16 = ChunkyPNG::Image16.from_file('depth16.png')
+image8 = image16.to_canvas(rounding: :truncate) # or :round
 ```
 
 Also check out the screencast on the ChunkyPNG homepage by John Davison,

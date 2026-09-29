@@ -192,8 +192,10 @@ module ChunkyPNG
         stream = "".b
         0.upto(6) do |pass|
           subcanvas = self.class.adam7_extract_pass(pass, self)
-          subcanvas.encoding_palette = encoding_palette
-          subcanvas.encode_png_image_pass_to_stream(stream, color_mode, bit_depth, filtering)
+          unless subcanvas.width == 0 || subcanvas.height == 0
+            subcanvas.encoding_palette = encoding_palette
+            subcanvas.encode_png_image_pass_to_stream(stream, color_mode, bit_depth, filtering)
+          end
         end
         stream
       end
@@ -205,7 +207,7 @@ module ChunkyPNG
       # @param [Integer] filtering The filtering method to use.
       def encode_png_image_pass_to_stream(stream, color_mode, bit_depth, filtering)
         start_pos  = stream.bytesize
-        pixel_size = Color.pixel_bytesize(color_mode)
+        pixel_size = Color.pixel_bytesize(color_mode, bit_depth)
         line_width = Color.scanline_bytesize(color_mode, bit_depth, width)
 
         # Determine the filter method

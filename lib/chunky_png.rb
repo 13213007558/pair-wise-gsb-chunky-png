@@ -155,6 +155,7 @@ require "chunky_png/chunk"
 # Colors
 require "chunky_png/palette"
 require "chunky_png/color"
+require "chunky_png/color16"
 
 # Geometry
 require "chunky_png/point"
@@ -163,4 +164,6 @@ require "chunky_png/dimension"
 
 # Canvas / Image classes
 require "chunky_png/canvas"
+require "chunky_png/canvas16"
 require "chunky_png/image"
+require "chunky_png/image16"

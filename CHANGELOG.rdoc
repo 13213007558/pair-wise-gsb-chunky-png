@@ -7,6 +7,8 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add <tt>ChunkyPNG::Canvas16</tt>, <tt>ChunkyPNG::Image16</tt>, and <tt>ChunkyPNG::Color16</tt> for lossless 16-bit grayscale, RGB, grayscale alpha, and RGBA PNG read/write support. 16-bit images are converted to the existing 8-bit canvas representation only through an explicit conversion with selectable rounding.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

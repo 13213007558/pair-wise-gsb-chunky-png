@@ -72,10 +72,8 @@ module ChunkyPNG
         case color_mode
           when ChunkyPNG::COLOR_INDEXED
             decoding_palette = ChunkyPNG::Palette.from_chunks(ds.palette_chunk, ds.transparency_chunk)
-          when ChunkyPNG::COLOR_TRUECOLOR
-            transparent_color = ds.transparency_chunk.truecolor_entry(depth) if ds.transparency_chunk
-          when ChunkyPNG::COLOR_GRAYSCALE
-            transparent_color = ds.transparency_chunk.grayscale_entry(depth) if ds.transparency_chunk
+          when ChunkyPNG::COLOR_TRUECOLOR, ChunkyPNG::COLOR_GRAYSCALE
+            transparent_color = transparent_color_from_chunk(ds, color_mode, depth)
         end
 
         decode_png_pixelstream(ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color)
@@ -101,11 +99,29 @@ module ChunkyPNG
           else raise ChunkyPNG::NotSupported, "Don't know how the handle interlacing method #{interlace}!"
         end
 
-        image.pixels.map! { |c| c == transparent_color ? ChunkyPNG::Color::TRANSPARENT : c } if transparent_color
+        image.pixels.map! { |c| c == transparent_color ? transparent_pixel_color : c } if transparent_color
         image
       end
 
       protected
+
+      def transparent_pixel_color
+        ChunkyPNG::Color::TRANSPARENT
+      end
+
+      def transparent_color_from_chunk(ds, color_mode, depth)
+        return unless ds.transparency_chunk
+        case color_mode
+        when ChunkyPNG::COLOR_TRUECOLOR
+          ds.transparency_chunk.truecolor_entry(depth)
+        when ChunkyPNG::COLOR_GRAYSCALE
+          ds.transparency_chunk.grayscale_entry(depth)
+        end
+      end
+
+      def append_truecolor_decoding_byte(stream, color_mode)
+        stream << ChunkyPNG::EXTRA_BYTE if color_mode == ChunkyPNG::COLOR_TRUECOLOR
+      end
 
       # Decodes a canvas from a non-interlaced PNG encoded pixelstream, using a
       # given width, height and color mode.
@@ -134,9 +150,11 @@ module ChunkyPNG
         start_pos = 0
         for pass in 0...7
           sm_width, sm_height = adam7_pass_size(pass, width, height)
-          sm = decode_png_image_pass(stream, sm_width, sm_height, color_mode, depth, start_pos, decoding_palette)
-          adam7_merge_pass(pass, canvas, sm)
-          start_pos += ChunkyPNG::Color.pass_bytesize(color_mode, depth, sm_width, sm_height)
+          unless sm_width == 0 || sm_height == 0
+            sm = decode_png_image_pass(stream, sm_width, sm_height, color_mode, depth, start_pos, decoding_palette)
+            adam7_merge_pass(pass, canvas, sm)
+            start_pos += ChunkyPNG::Color.pass_bytesize(color_mode, depth, sm_width, sm_height)
+          end
         end
         canvas
       end
@@ -384,7 +402,7 @@ module ChunkyPNG
         pixels = []
         if width > 0 && height > 0
 
-          stream << ChunkyPNG::EXTRA_BYTE if color_mode == ChunkyPNG::COLOR_TRUECOLOR
+          append_truecolor_decoding_byte(stream, color_mode)
           pixel_decoder = decode_png_pixels_from_scanline_method(color_mode, depth)
           line_length   = ChunkyPNG::Color.scanline_bytesize(color_mode, depth, width)
           pixel_size    = ChunkyPNG::Color.pixel_bytesize(color_mode, depth)

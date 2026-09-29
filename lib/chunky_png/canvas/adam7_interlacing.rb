@@ -71,7 +71,11 @@ module ChunkyPNG
         end
 
         new_canvas_args = adam7_pass_size(pass, canvas.width, canvas.height) + [sm_pixels]
-        ChunkyPNG::Canvas.new(*new_canvas_args)
+        adam7_new_pass_canvas(*new_canvas_args)
+      end
+
+      def adam7_new_pass_canvas(*args)
+        ChunkyPNG::Canvas.new(*args)
       end
     end
   end
