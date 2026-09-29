@@ -7,6 +7,10 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add <tt>Canvas#homography_transform</tt> to warp a canvas with a 3x3
+  homography matrix, using backward mapping, footprint-matched
+  anti-aliasing and premultiplied-alpha sampling.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 
