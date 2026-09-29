@@ -7,6 +7,10 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add <tt>ChunkyPNG::Canvas::SeamCarving</tt>: content-aware resizing that removes
+  low-energy seams first, with support for protection and removal-priority masks,
+  and a mapping of every removed seam back to original image coordinates.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 
