@@ -7,6 +7,11 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add color-managed source-over compositing through
+  <tt>Canvas#compose_managed</tt> and <tt>Canvas#compose_managed!</tt>,
+  with support for sRGB and valid gAMA+cHRM metadata and configurable
+  invalid/missing metadata policies.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

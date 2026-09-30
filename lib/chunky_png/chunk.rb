@@ -393,6 +393,89 @@ module ChunkyPNG
       INCHES_PER_METER = 0.0254
     end
 
+    # The Standard RGB color space (sRGB) chunk declares that the image uses
+    # the sRGB color space and transfer function.
+    #
+    # @see https://www.w3.org/TR/PNG/#11sRGB
+    class SRGB < Base
+      RENDERING_INTENTS = {
+        0 => :perceptual,
+        1 => :relative_colorimetric,
+        2 => :saturation,
+        3 => :absolute_colorimetric,
+      }.freeze
+
+      attr_accessor :rendering_intent
+
+      def initialize(rendering_intent = 0)
+        super("sRGB")
+        @rendering_intent = rendering_intent
+      end
+
+      def rendering_intent_name
+        RENDERING_INTENTS[rendering_intent]
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The sRGB chunk must contain 1 byte!" unless content.bytesize == 1
+        new(content.unpack("C").first)
+      end
+
+      def content
+        [rendering_intent].pack("C")
+      end
+    end
+
+    # The gamma (gAMA) chunk specifies the relationship between stored image
+    # samples and the desired display output exponent.
+    #
+    # @see https://www.w3.org/TR/PNG/#11gAMA
+    class Gamma < Base
+      attr_accessor :gamma
+
+      def initialize(gamma)
+        super("gAMA")
+        @gamma = gamma
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The gAMA chunk must contain 4 bytes!" unless content.bytesize == 4
+        new(content.unpack("N").first / 100_000.0)
+      end
+
+      def content
+        [(gamma * 100_000.0).round].pack("N")
+      end
+    end
+
+    # The primary chromaticities and white point (cHRM) chunk identifies the
+    # x/y chromaticities of the RGB channels and the color space white point.
+    #
+    # @see https://www.w3.org/TR/PNG/#11cHRM
+    class Chromaticity < Base
+      attr_accessor :white_point, :primaries
+
+      def initialize(white_x, white_y, red_x, red_y, green_x, green_y, blue_x, blue_y)
+        super("cHRM")
+        @white_point = [white_x, white_y]
+        @primaries = [
+          [red_x, red_y],
+          [green_x, green_y],
+          [blue_x, blue_y],
+        ]
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The cHRM chunk must contain 32 bytes!" unless content.bytesize == 32
+        new(*content.unpack("N8").map { |value| value / 100_000.0 })
+      end
+
+      def content
+        values = [white_point] + primaries
+        values.flatten.map { |value| (value * 100_000.0).round }.pack("N8")
+      end
+    end
+
     # The InternationalText (iTXt) chunk contains keyword/value metadata about the PNG
     # stream, translated to a given locale.
     #
@@ -467,6 +550,9 @@ module ChunkyPNG
       "zTXt" => CompressedText,
       "iTXt" => InternationalText,
       "pHYs" => Physical,
+      "sRGB" => SRGB,
+      "gAMA" => Gamma,
+      "cHRM" => Chromaticity,
     }
   end
 end

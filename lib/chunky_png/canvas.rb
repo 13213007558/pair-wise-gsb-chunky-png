@@ -8,6 +8,7 @@ require "chunky_png/canvas/stream_importing"
 require "chunky_png/canvas/data_url_exporting"
 require "chunky_png/canvas/data_url_importing"
 require "chunky_png/canvas/operations"
+require "chunky_png/canvas/color_management"
 require "chunky_png/canvas/drawing"
 require "chunky_png/canvas/resampling"
 require "chunky_png/canvas/masking"
@@ -44,6 +45,7 @@ module ChunkyPNG
     extend  DataUrlImporting
 
     include Operations
+    include ColorManagement
     include Drawing
     include Resampling
     include Masking
@@ -57,6 +59,12 @@ module ChunkyPNG
     # @return [Array<ChunkyPNG::Color>] The list of pixels in this canvas.
     #   This array always should have +width * height+ elements.
     attr_reader :pixels
+
+    # @return [ChunkyPNG::ColorSpace, nil] The explicitly assigned color space.
+    attr_accessor :color_space
+
+    # @return [Hash, nil] Raw sRGB, gAMA and cHRM chunks read from a PNG.
+    attr_accessor :color_profile_chunks
 
     #################################################################
     # CONSTRUCTORS
@@ -97,6 +105,8 @@ module ChunkyPNG
     def initialize_copy(other)
       @width, @height = other.width, other.height
       @pixels = other.pixels.dup
+      @color_space = other.color_space
+      @color_profile_chunks = other.color_profile_chunks
     end
 
     # Creates a new canvas instance by duplicating another instance.

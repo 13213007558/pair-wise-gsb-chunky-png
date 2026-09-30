@@ -90,10 +90,21 @@ module ChunkyPNG
         data           = encode_png_pixelstream(encoding[:color_mode], encoding[:bit_depth], encoding[:interlace], encoding[:filtering])
         ds.data_chunks = Chunk::ImageData.split_in_chunks(data, encoding[:compression])
         ds.end_chunk   = Chunk::End.new
+        profile_chunks = color_space ? color_space.chunks : raw_color_profile_chunks
+        ds.srgb_chunks = profile_chunks.select { |chunk| chunk.is_a?(Chunk::SRGB) }
+        ds.gamma_chunks = profile_chunks.select { |chunk| chunk.is_a?(Chunk::Gamma) }
+        ds.chromaticity_chunks = profile_chunks.select { |chunk| chunk.is_a?(Chunk::Chromaticity) }
         ds
       end
 
       protected
+
+      def raw_color_profile_chunks
+        return [] unless color_profile_chunks
+        Array(color_profile_chunks[:srgb]).compact +
+          Array(color_profile_chunks[:gama]).compact +
+          Array(color_profile_chunks[:chrm]).compact
+      end
 
       # Determines the best possible PNG encoding variables for this image, by analyzing
       # the colors used for the image.

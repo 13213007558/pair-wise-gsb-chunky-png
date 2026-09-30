@@ -140,6 +140,11 @@ module ChunkyPNG
   class UnitsUnknown < ChunkyPNG::Exception
   end
 
+  # Exception that is raised when PNG color profile metadata is missing,
+  # conflicting, or invalid and the selected policy does not allow a fallback.
+  class ColorProfileError < ChunkyPNG::Exception
+  end
+
   # Null-byte, with the encoding set correctly to ASCII-8BIT (binary) in Ruby 1.9.
   # @return [String] A binary string, consisting of one NULL-byte.
   # @private
@@ -155,6 +160,7 @@ require "chunky_png/chunk"
 # Colors
 require "chunky_png/palette"
 require "chunky_png/color"
+require "chunky_png/color_space"
 
 # Geometry
 require "chunky_png/point"

@@ -78,7 +78,16 @@ module ChunkyPNG
             transparent_color = ds.transparency_chunk.grayscale_entry(depth) if ds.transparency_chunk
         end
 
-        decode_png_pixelstream(ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color)
+        image = decode_png_pixelstream(
+          ds.imagedata, width, height, color_mode, depth, interlace,
+          decoding_palette, transparent_color
+        )
+        image.color_profile_chunks = {
+          srgb: ds.srgb_chunks,
+          gama: ds.gamma_chunks,
+          chrm: ds.chromaticity_chunks,
+        }
+        image
       end
 
       # Decodes a canvas from a PNG encoded pixelstream, using a given width, height,

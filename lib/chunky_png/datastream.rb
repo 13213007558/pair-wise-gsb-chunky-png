@@ -33,6 +33,18 @@ module ChunkyPNG
     # @return [ChunkyPNG::Chunk::Physical]
     attr_accessor :physical_chunk
 
+    # All sRGB chunks. A valid PNG contains at most one sRGB chunk.
+    # @return [Array<ChunkyPNG::Chunk::SRGB>]
+    attr_accessor :srgb_chunks
+
+    # All image gamma chunks. A valid PNG contains at most one gAMA chunk.
+    # @return [Array<ChunkyPNG::Chunk::Gamma>]
+    attr_accessor :gamma_chunks
+
+    # All chromaticity chunks. A valid PNG contains at most one cHRM chunk.
+    # @return [Array<ChunkyPNG::Chunk::Chromaticity>]
+    attr_accessor :chromaticity_chunks
+
     # The chunks that together compose the images pixel data.
     # @return [Array<ChunkyPNG::Chunk::ImageData>]
     attr_accessor :data_chunks
@@ -45,6 +57,9 @@ module ChunkyPNG
     def initialize
       @other_chunks = []
       @data_chunks  = []
+      @srgb_chunks  = []
+      @gamma_chunks = []
+      @chromaticity_chunks = []
     end
 
     ##############################################################################
@@ -86,6 +101,9 @@ module ChunkyPNG
             when ChunkyPNG::Chunk::Transparency then ds.transparency_chunk = chunk
             when ChunkyPNG::Chunk::ImageData    then ds.data_chunks << chunk
             when ChunkyPNG::Chunk::Physical     then ds.physical_chunk = chunk
+            when ChunkyPNG::Chunk::SRGB        then ds.srgb_chunks << chunk
+            when ChunkyPNG::Chunk::Gamma       then ds.gamma_chunks << chunk
+            when ChunkyPNG::Chunk::Chromaticity then ds.chromaticity_chunks << chunk
             when ChunkyPNG::Chunk::End          then ds.end_chunk = chunk
             else ds.other_chunks << chunk
           end
@@ -123,6 +141,9 @@ module ChunkyPNG
     # @see ChunkyPNG::Datastream#chunks
     def each_chunk
       yield(header_chunk)
+      srgb_chunks.each { |chunk| yield(chunk) }
+      gamma_chunks.each { |chunk| yield(chunk) }
+      chromaticity_chunks.each { |chunk| yield(chunk) }
       other_chunks.each { |chunk| yield(chunk) }
       yield(palette_chunk)      if palette_chunk
       yield(transparency_chunk) if transparency_chunk
@@ -152,6 +173,63 @@ module ChunkyPNG
     # @return [String] The uncompressed image data for this datastream
     def imagedata
       ChunkyPNG::Chunk::ImageData.combine_chunks(data_chunks)
+    end
+
+    # Returns the color space described by the sRGB, gAMA and cHRM chunks.
+    #
+    # @param [Hash] options Policies for incomplete or invalid metadata.
+    # @return [ChunkyPNG::ColorSpace] The resolved color space.
+    def color_space(options = {})
+      ColorSpace.from_chunks(
+        srgb_chunks,
+        gamma_chunks,
+        chromaticity_chunks,
+        options
+      )
+    end
+
+    # The first sRGB chunk.
+    # @return [ChunkyPNG::Chunk::SRGB, nil]
+    def srgb_chunk
+      srgb_chunks.first
+    end
+
+    # Sets the sole sRGB chunk.
+    # @param [ChunkyPNG::Chunk::SRGB, nil] chunk The sRGB chunk.
+    def srgb_chunk=(chunk)
+      self.srgb_chunks = chunk ? [chunk] : []
+    end
+
+    # The first gAMA chunk.
+    # @return [ChunkyPNG::Chunk::Gamma, nil]
+    def gama_chunk
+      gamma_chunks.first
+    end
+    alias gamma_chunk gama_chunk
+
+    # Sets the sole gAMA chunk.
+    # @param [ChunkyPNG::Chunk::Gamma, nil] chunk The gAMA chunk.
+    def gama_chunk=(chunk)
+      self.gamma_chunks = chunk ? [chunk] : []
+    end
+    def gamma_chunk=(chunk)
+      self.gamma_chunks = chunk ? [chunk] : []
+    end
+
+    # The first cHRM chunk.
+    # @return [ChunkyPNG::Chunk::Chromaticity, nil]
+    def chrm_chunk
+      chromaticity_chunks.first
+    end
+    alias chromaticity_chunk chrm_chunk
+
+    # Sets the sole cHRM chunk.
+    # @param [ChunkyPNG::Chunk::Chromaticity, nil] chunk The cHRM chunk.
+    def chrm_chunk=(chunk)
+      self.chromaticity_chunks = chunk ? [chunk] : []
+    end
+    def chromaticity_chunk=(chunk)
+      self.chromaticity_chunks = chunk ? [chunk] : []
     end
 
     ##################################################################################

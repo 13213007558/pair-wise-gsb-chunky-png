@@ -47,6 +47,10 @@ badge  = ChunkyPNG::Image.from_file('no_ie_badge.png')
 avatar.compose!(badge, 10, 10)
 avatar.save('composited.png', :fast_rgba) # Force the fast saving routine.
 
+# Compose with color management when the PNGs use different sRGB/gAMA/cHRM
+# metadata. The ordinary compose method above remains the fast encoded-RGB path.
+avatar.compose_managed!(badge, 10, 10)
+
 # Accessing metadata
 image = ChunkyPNG::Image.from_file('with_metadata.png')
 puts image.metadata['Title']

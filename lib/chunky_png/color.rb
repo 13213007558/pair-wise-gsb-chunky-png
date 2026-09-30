@@ -395,6 +395,54 @@ module ChunkyPNG
       rgba(new_r, new_g, new_b, new_a)
     end
 
+    # Composes two colors in a common linear-light sRGB color space.
+    #
+    # The RGB components are decoded and chromatically adapted before the
+    # source-over operation. Alpha values are used as coverage values and are
+    # not gamma decoded. Fully transparent pixels do not contribute their
+    # encoded RGB components.
+    #
+    # @param [Integer] fg The foreground color.
+    # @param [Integer] bg The background color.
+    # @param [ChunkyPNG::ColorSpace] fg_color_space The foreground color space.
+    # @param [ChunkyPNG::ColorSpace] bg_color_space The background color space.
+    # @return [Integer] The composited color, encoded using the background
+    #   color space.
+    def compose_managed(fg, bg, fg_color_space, bg_color_space)
+      fg_alpha = a(fg).to_f / MAX
+      bg_alpha = a(bg).to_f / MAX
+      output_alpha = fg_alpha + (1.0 - fg_alpha) * bg_alpha
+      return TRANSPARENT if output_alpha <= 0.0
+
+      if fg_alpha.zero?
+        output_rgb = bg_color_space.to_linear_srgb(
+          [r(bg), g(bg), b(bg)].map { |value| value.to_f / MAX }
+        )
+      elsif bg_alpha.zero?
+        output_rgb = fg_color_space.to_linear_srgb(
+          [r(fg), g(fg), b(fg)].map { |value| value.to_f / MAX }
+        )
+      else
+        fg_rgb = fg_color_space.to_linear_srgb(
+          [r(fg), g(fg), b(fg)].map { |value| value.to_f / MAX }
+        )
+        bg_rgb = bg_color_space.to_linear_srgb(
+          [r(bg), g(bg), b(bg)].map { |value| value.to_f / MAX }
+        )
+        background_weight = (1.0 - fg_alpha) * bg_alpha / output_alpha
+        foreground_weight = fg_alpha / output_alpha
+        output_rgb = fg_rgb.each_with_index.map do |value, index|
+          value * foreground_weight + bg_rgb[index] * background_weight
+        end
+      end
+
+      encoded_rgb = bg_color_space.from_linear_srgb(output_rgb).map do |value|
+        [[(value * MAX).round, 0].max, MAX].min
+      end
+      new_alpha = [[(output_alpha * MAX).round, 0].max, MAX].min
+      rgba(encoded_rgb[0], encoded_rgb[1], encoded_rgb[2], new_alpha)
+    end
+
     alias compose compose_quick
 
     # Blends the foreground and background color by taking the average of
