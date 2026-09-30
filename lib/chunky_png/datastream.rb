@@ -154,6 +154,30 @@ module ChunkyPNG
       ChunkyPNG::Chunk::ImageData.combine_chunks(data_chunks)
     end
 
+    # Returns the color profile represented by the sRGB, gAMA and cHRM chunks.
+    #
+    # @option policy [Symbol] :missing (`:assume_srgb`) Use `:raise` to reject
+    #   datastreams with incomplete color profile metadata.
+    # @option policy [Symbol] :conflict (`:raise`) Use `:prefer_first` or
+    #   `:prefer_srgb` to resolve duplicate or disagreeing profile chunks.
+    # @option policy [Symbol] :invalid_white (`:raise`) Use `:assume_srgb` or
+    #   `:ignore_chrm` to recover from an invalid cHRM white point.
+    def color_profile(policy = {})
+      policy = color_profile_policy(policy)
+      srgb_chunks = other_chunks.select { |chunk| chunk.is_a?(ChunkyPNG::Chunk::SRGB) }
+      gamma_chunks = other_chunks.select { |chunk| chunk.is_a?(ChunkyPNG::Chunk::Gamma) }
+      chrm_chunks = other_chunks.select { |chunk| chunk.is_a?(ChunkyPNG::Chunk::Chromaticities) }
+      profile_chunks = srgb_chunks + gamma_chunks + chrm_chunks
+
+      if profile_chunks.empty?
+        handle_missing_profile(policy[:missing])
+      elsif srgb_chunks.length > 1 || gamma_chunks.length > 1 || chrm_chunks.length > 1
+        handle_profile_conflict(policy[:conflict], srgb_chunks, gamma_chunks, chrm_chunks, policy)
+      else
+        build_color_profile(srgb_chunks.first, gamma_chunks.first, chrm_chunks.first, policy)
+      end
+    end
+
     ##################################################################################
     # WRITING DATASTREAMS
     ##################################################################################
@@ -182,5 +206,132 @@ module ChunkyPNG
 
     alias to_string to_blob
     alias to_s to_blob
+
+    private
+
+    def color_profile_policy(policy)
+      {
+        missing: ChunkyPNG::ColorProfile::DEFAULT_MISSING_POLICY,
+        conflict: ChunkyPNG::ColorProfile::DEFAULT_CONFLICT_POLICY,
+        invalid_white: ChunkyPNG::ColorProfile::DEFAULT_INVALID_WHITE_POLICY,
+      }.merge(policy)
+    end
+
+    def handle_missing_profile(option)
+      case option
+        when :assume_srgb then ChunkyPNG::ColorProfile.srgb(explicit: false)
+        when :raise then raise ChunkyPNG::MissingColorProfile, "PNG has no sRGB, gAMA or cHRM chunk."
+        else raise ArgumentError, "Unknown missing color profile policy: #{option.inspect}."
+      end
+    end
+
+    def handle_profile_conflict(option, srgb_chunks, gamma_chunks, chrm_chunks, policy)
+      case option
+        when :raise
+          raise ChunkyPNG::ExpectationFailed, "Duplicate PNG color profile chunks were found."
+        when :prefer_first
+          first_color_chunk = other_chunks.find { |chunk| color_profile_chunk?(chunk) }
+          first_srgb = first_color_chunk if first_color_chunk.is_a?(ChunkyPNG::Chunk::SRGB)
+          first_gamma = first_color_chunk if first_color_chunk.is_a?(ChunkyPNG::Chunk::Gamma)
+          first_chrm = first_color_chunk if first_color_chunk.is_a?(ChunkyPNG::Chunk::Chromaticities)
+          build_color_profile(
+            first_srgb,
+            first_gamma,
+            first_chrm,
+            policy.merge(conflict: option)
+          )
+        when :prefer_srgb
+          if srgb_chunks.any?
+            ChunkyPNG::ColorProfile.srgb
+          else
+            build_color_profile(nil, gamma_chunks.first, chrm_chunks.first, policy.merge(conflict: option))
+          end
+        else raise ArgumentError, "Unknown color profile conflict policy: #{option.inspect}."
+      end
+    end
+
+    def color_profile_chunk?(chunk)
+      chunk.is_a?(ChunkyPNG::Chunk::SRGB) ||
+        chunk.is_a?(ChunkyPNG::Chunk::Gamma) ||
+        chunk.is_a?(ChunkyPNG::Chunk::Chromaticities)
+    end
+
+    def build_color_profile(srgb_chunk, gamma_chunk, chrm_chunk, policy)
+      if srgb_chunk
+        profile = ChunkyPNG::ColorProfile.srgb
+        compatible = if gamma_chunk && chrm_chunk
+          gamma_chunk.gamma == 45_455 &&
+            chrm_chunk.to_profile_chromaticities == ChunkyPNG::ColorProfile::Chromaticities.srgb
+        elsif gamma_chunk
+          gamma_chunk.gamma == 45_455
+        elsif chrm_chunk
+          chrm_chunk.to_profile_chromaticities == ChunkyPNG::ColorProfile::Chromaticities.srgb
+        else
+          true
+        end
+        unless compatible
+          case policy[:conflict]
+            when :raise then raise ChunkyPNG::ExpectationFailed, "PNG color profile chunks disagree."
+            when :prefer_first
+              if gamma_chunk
+                return ChunkyPNG::ColorProfile.custom(
+                  gamma: Rational(100_000, gamma_chunk.gamma),
+                  chromaticities: chrm_chunk ? chrm_chunk.to_profile_chromaticities : srgb_chromaticities
+                )
+              end
+              profile = ChunkyPNG::ColorProfile.custom(
+                gamma: ChunkyPNG::ColorProfile::SRGB_GAMMA,
+                chromaticities: chrm_chunk.to_profile_chromaticities
+              ) if chrm_chunk
+              profile
+            when :prefer_srgb then return profile
+            else raise ArgumentError, "Unknown color profile conflict policy: #{policy[:conflict].inspect}."
+          end
+        end
+        profile
+      elsif gamma_chunk && chrm_chunk
+        custom_color_profile(gamma_chunk, chrm_chunk, policy)
+      else
+        handle_partial_custom_profile(gamma_chunk, chrm_chunk, policy[:missing])
+      end
+    end
+
+    def srgb_chromaticities
+      ChunkyPNG::ColorProfile::Chromaticities.srgb
+    end
+
+    def custom_color_profile(gamma_chunk, chrm_chunk, policy)
+      ChunkyPNG::ColorProfile.custom(
+        gamma: Rational(100_000, gamma_chunk.gamma),
+        chromaticities: chrm_chunk.to_profile_chromaticities
+      )
+    rescue ChunkyPNG::ColorProfile::InvalidColorSpace
+      handle_invalid_white(gamma_chunk, chrm_chunk, policy[:invalid_white])
+    end
+
+    def handle_partial_custom_profile(gamma_chunk, chrm_chunk, option)
+      case option
+        when :assume_srgb, :fill_srgb_defaults
+          ChunkyPNG::ColorProfile.srgb(explicit: false)
+        when :raise
+          raise ChunkyPNG::ExpectationFailed, "A custom PNG color profile requires both gAMA and cHRM chunks."
+        else raise ArgumentError, "Unknown missing color profile policy: #{option.inspect}."
+      end
+    rescue ChunkyPNG::ColorProfile::InvalidColorSpace
+      handle_invalid_white(gamma_chunk, chrm_chunk, option)
+    end
+
+    def handle_invalid_white(gamma_chunk, chrm_chunk, option)
+      case option
+        when :raise
+          raise
+        when :assume_srgb
+          ChunkyPNG::ColorProfile.srgb(explicit: false)
+        when :ignore_chrm
+          gamma = gamma_chunk ? Rational(100_000, gamma_chunk.gamma) : ChunkyPNG::ColorProfile::SRGB_GAMMA
+          ChunkyPNG::ColorProfile.custom(gamma: gamma, chromaticities: ChunkyPNG::ColorProfile::Chromaticities.srgb)
+        else raise ArgumentError, "Unknown invalid white point policy: #{option.inspect}."
+      end
+    end
   end
 end

@@ -205,6 +205,117 @@ module ChunkyPNG
     class Palette < Generic
     end
 
+    # The Gamma (gAMA) chunk describes the exponent used by the image's
+    # transfer function.
+    #
+    # @see https://www.w3.org/TR/PNG/#11gAMA
+    class Gamma < Base
+      attr_accessor :gamma
+
+      def initialize(gamma)
+        super("gAMA")
+        unless gamma.is_a?(Integer) && gamma > 0
+          raise ArgumentError, "The gAMA chunk should contain a positive integer."
+        end
+        @gamma = gamma
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The gAMA chunk should contain 4 bytes." unless content.bytesize == 4
+        value = content.unpack("N").first
+        raise ExpectationFailed, "The gAMA chunk should contain a positive value." if value.zero?
+        new(value)
+      end
+
+      def content
+        [gamma].pack("N")
+      end
+    end
+
+    # The StandardRGB (sRGB) chunk marks the image as using the standard sRGB
+    # color space and transfer function.
+    #
+    # @see https://www.w3.org/TR/PNG/#11sRGB
+    class SRGB < Base
+      RENDERING_INTENTS = {
+        0 => :perceptual,
+        1 => :relative_colorimetric,
+        2 => :saturation,
+        3 => :absolute_colorimetric,
+      }.freeze
+
+      attr_accessor :rendering_intent
+
+      def initialize(rendering_intent = 0)
+        super("sRGB")
+        rendering_intent = RENDERING_INTENTS.fetch(rendering_intent, rendering_intent)
+        raise ArgumentError, "Unknown sRGB rendering intent." unless RENDERING_INTENTS.values.include?(rendering_intent)
+        @rendering_intent = rendering_intent
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The sRGB chunk should contain 1 byte." unless content.bytesize == 1
+        new(content.unpack("C").first)
+      end
+
+      def content
+        [RENDERING_INTENTS.invert.fetch(rendering_intent)].pack("C")
+      end
+    end
+
+    # The Chromaticities (cHRM) chunk describes the RGB primaries and white
+    # point of the image's color space.
+    #
+    # @see https://www.w3.org/TR/PNG/#11cHRM
+    class Chromaticities < Base
+      CHROMATICITY_KEYS = [:white_x, :white_y, :red_x, :red_y, :green_x, :green_y, :blue_x, :blue_y].freeze
+      SCALE = 100_000.0
+
+      attr_accessor(*CHROMATICITY_KEYS)
+
+      def initialize(attributes = {})
+        super("cHRM")
+        CHROMATICITY_KEYS.each do |key|
+          value = attributes.fetch(key)
+          value = Rational(value, 100_000) if value.is_a?(Integer)
+          unless value.is_a?(Numeric) && value.to_f.finite?
+            raise ArgumentError, "cHRM chromaticities must be finite numeric values."
+          end
+          raise ArgumentError, "cHRM chromaticities must be between 0 and 1." unless value >= 0 && value <= 1
+          rounded_value = (value * SCALE).round
+          if (value * 100_000 - rounded_value).abs > 1e-9
+            raise ArgumentError, "cHRM chromaticities must have at most five decimal places."
+          end
+          send("#{key}=", value)
+        end
+        if white_x.zero? || white_y.zero? || white_x + white_y >= 1
+          raise ArgumentError, "The cHRM white point must have positive x and y."
+        end
+      end
+
+      def to_profile_chromaticities
+        ChunkyPNG::ColorProfile::Chromaticities.new(
+          white_x: white_x, white_y: white_y,
+          red_x: red_x, red_y: red_y,
+          green_x: green_x, green_y: green_y,
+          blue_x: blue_x, blue_y: blue_y
+        )
+      end
+
+      def self.read(type, content)
+        raise ExpectationFailed, "The cHRM chunk should contain 32 bytes." unless content.bytesize == 32
+        values = content.unpack("N8")
+        unless values.all? { |value| value <= 100_000 }
+          raise ExpectationFailed, "cHRM chromaticities must be in the range 0..1."
+        end
+        new(Hash[CHROMATICITY_KEYS.zip(values)])
+      end
+
+      def content
+        CHROMATICITY_KEYS.map { |key| (send(key) * SCALE).round }.pack("N8")
+      end
+    end
+
     # A transparency (tRNS) chunk defines the transparency for an image.
     #
     # * For indexed images, it contains the alpha channel for the colors
@@ -463,6 +574,9 @@ module ChunkyPNG
       "IDAT" => ImageData,
       "PLTE" => Palette,
       "tRNS" => Transparency,
+      "gAMA" => Gamma,
+      "sRGB" => SRGB,
+      "cHRM" => Chromaticities,
       "tEXt" => Text,
       "zTXt" => CompressedText,
       "iTXt" => InternationalText,

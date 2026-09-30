@@ -32,8 +32,8 @@ module ChunkyPNG
       # Decodes a Canvas from a PNG encoded string.
       # @param [String] str The string to read from.
       # @return [ChunkyPNG::Canvas] The canvas decoded from the PNG encoded string.
-      def from_blob(str)
-        from_datastream(ChunkyPNG::Datastream.from_blob(str))
+      def from_blob(str, color_profile_policy = {})
+        from_datastream(ChunkyPNG::Datastream.from_blob(str), color_profile_policy)
       end
 
       alias from_string from_blob
@@ -41,15 +41,15 @@ module ChunkyPNG
       # Decodes a Canvas from a PNG encoded file.
       # @param [String] filename The file to read from.
       # @return [ChunkyPNG::Canvas] The canvas decoded from the PNG file.
-      def from_file(filename)
-        from_datastream(ChunkyPNG::Datastream.from_file(filename))
+      def from_file(filename, color_profile_policy = {})
+        from_datastream(ChunkyPNG::Datastream.from_file(filename), color_profile_policy)
       end
 
       # Decodes a Canvas from a PNG encoded stream.
       # @param [IO, #read] io The stream to read from.
       # @return [ChunkyPNG::Canvas] The canvas decoded from the PNG stream.
-      def from_io(io)
-        from_datastream(ChunkyPNG::Datastream.from_io(io))
+      def from_io(io, color_profile_policy = {})
+        from_datastream(ChunkyPNG::Datastream.from_io(io), color_profile_policy)
       end
 
       alias from_stream from_io
@@ -57,7 +57,7 @@ module ChunkyPNG
       # Decodes the Canvas from a PNG datastream instance.
       # @param [ChunkyPNG::Datastream] ds The datastream to decode.
       # @return [ChunkyPNG::Canvas] The canvas decoded from the PNG datastream.
-      def from_datastream(ds)
+      def from_datastream(ds, color_profile_policy = {})
         width      = ds.header_chunk.width
         height     = ds.header_chunk.height
         color_mode = ds.header_chunk.color
@@ -78,7 +78,11 @@ module ChunkyPNG
             transparent_color = ds.transparency_chunk.grayscale_entry(depth) if ds.transparency_chunk
         end
 
-        decode_png_pixelstream(ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color)
+        image = decode_png_pixelstream(
+          ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color
+        )
+        image.color_profile = ds.color_profile(color_profile_policy)
+        image
       end
 
       # Decodes a canvas from a PNG encoded pixelstream, using a given width, height,

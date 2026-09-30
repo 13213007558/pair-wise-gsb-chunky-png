@@ -70,8 +70,8 @@ module ChunkyPNG
     # from the datastream.
     #
     # @param [ChunkyPNG::Datastream] ds The datastream to read from.
-    def self.from_datastream(ds)
-      image = super(ds)
+    def self.from_datastream(ds, color_profile_policy = {})
+      image = super(ds, color_profile_policy)
       image.metadata = ds.metadata
       image
     end

@@ -11,6 +11,9 @@ module ChunkyPNG
     #
     # @see ChunkyPNG::Canvas
     module Operations
+      # @return [ChunkyPNG::ColorProfile] The profile used to interpret encoded RGB values.
+      attr_accessor :color_profile
+
       # Converts the canvas to grayscale.
       #
       # This method will modify the canvas. The obtain a new canvas and leave
@@ -89,6 +92,58 @@ module ChunkyPNG
       # @see #replace
       def compose(other, offset_x = 0, offset_y = 0)
         dup.compose!(other, offset_x, offset_y)
+      end
+
+      # Composes another image using explicit color management.
+      #
+      # RGB values are decoded to linear light, adapted to the target white
+      # point when necessary, composited with source-over, and encoded back
+      # into the target profile. Alpha values remain encoded.
+      #
+      # @param (see #compose_managed!)
+      # @return [ChunkyPNG::Canvas] The color-managed composite.
+      def compose_managed(other, offset_x = 0, offset_y = 0, options = {})
+        dup.compose_managed!(
+          other, offset_x, offset_y, options
+        )
+      end
+
+      # In-place variant of {#compose_managed}.
+      #
+      # @param [ChunkyPNG::Canvas] other The foreground canvas.
+      # @param [Integer] offset_x The horizontal offset of the foreground.
+      # @param [Integer] offset_y The vertical offset of the foreground.
+      # @param [ChunkyPNG::ColorProfile] foreground_profile Profile of the
+      #   foreground. Defaults to its assigned profile.
+      # @param [ChunkyPNG::ColorProfile] background_profile Profile of this
+      #   canvas before compositing. Defaults to its assigned profile.
+      # @param [ChunkyPNG::ColorProfile] target_profile Profile of the result.
+      #   Defaults to this canvas' profile.
+      # @return [ChunkyPNG::Canvas] Returns itself.
+      def compose_managed!(other, offset_x = 0, offset_y = 0, options = {})
+        check_size_constraints!(other, offset_x, offset_y)
+
+        foreground_profile = options[:foreground_profile] || other.color_profile
+        background_profile = options[:background_profile] || color_profile
+        target_profile = options[:target_profile] || color_profile
+
+        for y in 0...other.height do
+          for x in 0...other.width do
+            set_pixel(
+              x + offset_x,
+              y + offset_y,
+              ChunkyPNG::Color.compose_managed(
+                other.get_pixel(x, y),
+                get_pixel(x + offset_x, y + offset_y),
+                foreground_profile,
+                background_profile,
+                target_profile
+              )
+            )
+          end
+        end
+        self.color_profile = target_profile
+        self
       end
 
       # Replaces pixels on this image by pixels from another pixels, on a given

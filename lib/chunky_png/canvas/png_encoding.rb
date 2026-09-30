@@ -83,6 +83,8 @@ module ChunkyPNG
           interlace: encoding[:interlace]
         )
 
+        ds.other_chunks.concat(color_profile.to_chunks) if color_profile
+
         if encoding[:color_mode] == ChunkyPNG::COLOR_INDEXED
           ds.palette_chunk      = encoding_palette.to_plte_chunk
           ds.transparency_chunk = encoding_palette.to_trns_chunk unless encoding_palette.opaque?

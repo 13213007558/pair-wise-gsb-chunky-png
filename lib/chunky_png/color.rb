@@ -397,6 +397,37 @@ module ChunkyPNG
 
     alias compose compose_quick
 
+    # Composes two encoded colors using explicit color management.
+    #
+    # Both RGB values are decoded to linear light and converted to the target
+    # profile before source-over compositing. The alpha channels are used
+    # directly and are never passed through a transfer function.
+    #
+    # @param [Integer] fg The foreground color.
+    # @param [Integer] bg The background color.
+    # @param [ChunkyPNG::ColorProfile] fg_profile The foreground profile.
+    # @param [ChunkyPNG::ColorProfile] bg_profile The background profile.
+    # @param [ChunkyPNG::ColorProfile] target_profile The output profile.
+    # @return [Integer] The composited color in the target profile.
+    def compose_managed(fg, bg, fg_profile, bg_profile, target_profile)
+      fg_alpha = a(fg).fdiv(MAX)
+      bg_alpha = a(bg).fdiv(MAX)
+      out_alpha = fg_alpha + (1.0 - fg_alpha) * bg_alpha
+
+      return bg if fg_alpha.zero?
+      return fg if fg_alpha == 1.0 || bg_alpha.zero?
+
+      fg_rgb = decode_linear_rgb(fg, fg_profile)
+      bg_rgb = decode_linear_rgb(bg, bg_profile)
+      fg_rgb = convert_linear_rgb(fg_rgb, fg_profile, target_profile)
+      bg_rgb = convert_linear_rgb(bg_rgb, bg_profile, target_profile)
+
+      bg_weight = (1.0 - fg_alpha) * bg_alpha / out_alpha
+      fg_weight = 1.0 - bg_weight
+      rgb = fg_rgb.map.with_index { |value, index| fg_weight * value + bg_weight * bg_rgb[index] }
+      encode_linear_rgb(rgb, target_profile, (out_alpha * MAX).round)
+    end
+
     # Blends the foreground and background color by taking the average of
     # the components.
     #
@@ -405,6 +436,34 @@ module ChunkyPNG
     # @return [Integer] The blended color.
     def blend(fg, bg)
       (fg + bg) >> 1
+    end
+
+    class << self
+      private
+
+      def decode_linear_rgb(color, profile)
+        alpha = a(color)
+        [
+          profile.decode_component(r(color), alpha),
+          profile.decode_component(g(color), alpha),
+          profile.decode_component(b(color), alpha),
+        ]
+      end
+
+      def convert_linear_rgb(rgb, source_profile, target_profile)
+        matrix = source_profile.matrix_to(target_profile)
+        vector = matrix * Matrix.column_vector(rgb)
+        vector.to_a.flatten
+      end
+
+      def encode_linear_rgb(rgb, profile, alpha)
+        rgba(
+          profile.encode_component(rgb[0]),
+          profile.encode_component(rgb[1]),
+          profile.encode_component(rgb[2]),
+          alpha
+        )
+      end
     end
 
     # Interpolates the foreground and background colors by the given alpha

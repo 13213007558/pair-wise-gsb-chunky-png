@@ -127,6 +127,10 @@ module ChunkyPNG
   class InvalidUTF8 < ChunkyPNG::Exception
   end
 
+  # Exception that is raised if color management metadata is missing.
+  class MissingColorProfile < ChunkyPNG::Exception
+  end
+
   # Exception that is raised if an expectation fails.
   class ExpectationFailed < ChunkyPNG::Exception
   end
@@ -151,6 +155,7 @@ require "chunky_png/version"
 # PNG file structure
 require "chunky_png/datastream"
 require "chunky_png/chunk"
+require "chunky_png/color_profile"
 
 # Colors
 require "chunky_png/palette"

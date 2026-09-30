@@ -88,6 +88,7 @@ module ChunkyPNG
       else
         @pixels = Array.new(width * height, ChunkyPNG::Color.parse(initial))
       end
+      @color_profile = ChunkyPNG::ColorProfile.srgb(explicit: false)
     end
 
     # Initializes a new Canvas instances when being cloned.
@@ -97,6 +98,7 @@ module ChunkyPNG
     def initialize_copy(other)
       @width, @height = other.width, other.height
       @pixels = other.pixels.dup
+      @color_profile = other.color_profile
     end
 
     # Creates a new canvas instance by duplicating another instance.

@@ -19,6 +19,7 @@ memory leaking image library.
   chosen automatically, based on the amount of used colors.
 - R/W access to the image's pixels.
 - R/W access to all image metadata that is stored in chunks.
+- Color-managed source-over compositing for sRGB and valid gAMA+cHRM PNGs.
 - Memory efficient (uses a Fixnum, i.e. 4 or 8 bytes of memory per pixel,
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly
@@ -46,6 +47,17 @@ avatar = ChunkyPNG::Image.from_file('avatar.png')
 badge  = ChunkyPNG::Image.from_file('no_ie_badge.png')
 avatar.compose!(badge, 10, 10)
 avatar.save('composited.png', :fast_rgba) # Force the fast saving routine.
+
+# Color-managed compositing decodes both images to linear light, converts
+# their white points, applies source-over, and re-encodes to the target.
+# The source profile comes from the image's sRGB/gAMA/cHRM chunks; images
+# without those chunks use implicit sRGB.
+avatar.compose_managed!(badge, 10, 10)
+
+# Parsing defaults to implicit sRGB when sRGB/gAMA/cHRM metadata is absent.
+# Missing, conflicting, or invalid metadata can be made strict:
+image = ChunkyPNG::Image.from_file('different_gamma.png',
+  missing: :raise, conflict: :raise, invalid_white: :raise)
 
 # Accessing metadata
 image = ChunkyPNG::Image.from_file('with_metadata.png')
