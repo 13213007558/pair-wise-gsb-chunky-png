@@ -7,6 +7,11 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Added <tt>ChunkyPNG::Canvas#poisson_blend</tt> for seamless cloning: it solves
+  the Poisson equation inside a mask (supporting holes, disconnected regions and
+  masks touching the canvas edges) using normal or mixed gradients, and reports
+  convergence status and residual in the returned result object.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

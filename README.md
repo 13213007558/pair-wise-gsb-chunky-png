@@ -23,6 +23,9 @@ memory leaking image library.
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly
   optimized saving routine.
+- Seamless cloning: paste a source image into a target image using Poisson
+  blending (normal or mixed gradients), so no visible edges remain around
+  the pasted region.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
 
@@ -46,6 +49,15 @@ avatar = ChunkyPNG::Image.from_file('avatar.png')
 badge  = ChunkyPNG::Image.from_file('no_ie_badge.png')
 avatar.compose!(badge, 10, 10)
 avatar.save('composited.png', :fast_rgba) # Force the fast saving routine.
+
+# Or paste seamlessly with Poisson blending: the colors inside the mask are
+# solved from the source gradients while the target boundary is preserved.
+result = avatar.poisson_blend(badge, mask, 10, 10, mode: :mixed)
+if result.converged?
+  result.image.save('composited.png')
+else
+  warn "Did not converge, residual: #{result.residual}"
+end
 
 # Accessing metadata
 image = ChunkyPNG::Image.from_file('with_metadata.png')
