@@ -137,4 +137,22 @@ describe ChunkyPNG::Datastream do
       expect(parsed.translated_keyword.encoding).to eq(Encoding::UTF_8)
     end
   end
+
+  describe "APNG handling" do
+    it "treats a plain PNG as a non-animated datastream" do
+      ds = ChunkyPNG::Datastream.from_file(resource_file("pixelstream_reference.png"))
+      expect(ds.animated?).to be false
+      expect(ds.animation_chunk).to be_nil
+      expect(ds.frame_chunks).to be_empty
+      expect(ds.data_chunks).not_to be_empty
+    end
+
+    it "keeps reading a plain PNG image unchanged" do
+      filename = resource_file("pixelstream_reference.png")
+      expect { ChunkyPNG::Image.from_file(filename) }.not_to raise_error
+      image = ChunkyPNG::Image.from_file(filename)
+      expect(image.width).to be > 0
+      expect(image.height).to be > 0
+    end
+  end
 end

@@ -321,6 +321,240 @@ module ChunkyPNG
       end
     end
 
+    # The Animation Control (acTL) chunk marks a PNG datastream as an
+    # animated PNG (APNG) and controls how often the animation loops.
+    #
+    # It must appear before the first IDAT chunk. The +num_frames+ field
+    # indicates the total number of frames in the animation; the first frame
+    # either is the default image (when it has a fcTL chunk) or is encoded
+    # using fdAT chunks (when the default image is not part of the
+    # animation).
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification#.60acTL.60
+    class AnimationControl < Base
+      # @return [Integer] The number of frames in the animation.
+      attr_accessor :num_frames
+
+      # @return [Integer] The number of times the animation loops after the
+      #   first playthrough. A value of 0 means infinite looping.
+      attr_accessor :num_plays
+
+      # @param num_frames [Integer] The number of frames in the animation.
+      # @param num_plays [Integer] The number of times the animation loops
+      #   after the first playthrough; 0 means infinite looping.
+      def initialize(num_frames = 0, num_plays = 0)
+        super("acTL")
+        @num_frames, @num_plays = num_frames, num_plays
+      end
+
+      # Reads the 8 bytes of content from the acTL chunk.
+      # @param type [String] The chunk type indicator (= "acTL").
+      # @param content [String] The 8 bytes of content read from the chunk.
+      # @return [ChunkyPNG::Chunk::AnimationControl] The loaded chunk.
+      # @raise [ChunkyPNG::ExpectationFailed] If the chunk has the wrong size
+      #   or declares zero frames.
+      def self.read(type, content)
+        raise ChunkyPNG::ExpectationFailed, "Expected the acTL chunk to contain 8 bytes, got #{content.bytesize}!" unless content.bytesize == 8
+
+        num_frames, num_plays = content.unpack("NN")
+        raise ChunkyPNG::ExpectationFailed, "The acTL chunk should declare at least one frame!" if num_frames == 0
+
+        new(num_frames, num_plays)
+      end
+
+      # @return [String] The 8-byte content for the acTL chunk.
+      def content
+        [num_frames, num_plays].pack("NN")
+      end
+    end
+
+    # The Frame Control (fcTL) chunk describes one frame of an animated PNG:
+    # its position and size on the canvas, its duration and the blend and
+    # dispose operations to use.
+    #
+    # Exactly one fcTL chunk appears for every frame. It precedes the IDAT or
+    # fdAT chunks containing the frame's pixel data.
+    #
+    # @see ChunkyPNG::Chunk::FrameData
+    # @see https://wiki.mozilla.org/APNG_Specification#.60fcTL.60
+    class FrameControl < Base
+      # @return [Integer] Sequence number of the animation chunk, starting at 0.
+      attr_accessor :sequence_number
+
+      # @return [Integer] Width of the frame in pixels.
+      attr_accessor :width
+
+      # @return [Integer] Height of the frame in pixels.
+      attr_accessor :height
+
+      # @return [Integer] X offset of the frame on the default image canvas.
+      attr_accessor :x_offset
+
+      # @return [Integer] Y offset of the frame on the default image canvas.
+      attr_accessor :y_offset
+
+      # @return [Integer] Numerator of the frame delay fraction.
+      attr_accessor :delay_num
+
+      # @return [Integer] Denominator of the frame delay fraction. A value of
+      #   0 is stored as-is from the stream, but is interpreted as 100.
+      attr_accessor :delay_den
+
+      # @return [Integer] Dispose operation (APNG_DISPOSE_OP_*).
+      attr_accessor :dispose_op
+
+      # @return [Integer] Blend operation (APNG_BLEND_OP_*).
+      attr_accessor :blend_op
+
+      # @param attributes [Hash] A hash of frame control attributes.
+      def initialize(attributes = {})
+        attributes = {
+          sequence_number: 0,
+          width: 0,
+          height: 0,
+          x_offset: 0,
+          y_offset: 0,
+          delay_num: 1,
+          delay_den: 100,
+          dispose_op: ChunkyPNG::APNG_DISPOSE_OP_NONE,
+          blend_op: ChunkyPNG::APNG_BLEND_OP_SOURCE,
+        }.merge(attributes)
+        super("fcTL", attributes)
+      end
+
+      # Reads the 26 bytes of content from the fcTL chunk.
+      #
+      # The values are not validated beyond basic unpacking; use
+      # {#validate!} to check them against the APNG specification, so that
+      # errors can be attributed to the frame they belong to.
+      #
+      # @param type [String] The chunk type indicator (= "fcTL").
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameControl] The loaded chunk.
+      def self.read(type, content)
+        fields = content.unpack("NNNNNnnCC")
+        chunk = new(
+          sequence_number: fields[0],
+          width: fields[1],
+          height: fields[2],
+          x_offset: fields[3],
+          y_offset: fields[4],
+          delay_num: fields[5],
+          delay_den: fields[6],
+          dispose_op: fields[7],
+          blend_op: fields[8],
+        )
+        chunk.content_length = content.bytesize
+        chunk
+      end
+
+      # @return [String] The 26-byte content for the fcTL chunk.
+      def content
+        [
+          sequence_number,
+          width,
+          height,
+          x_offset,
+          y_offset,
+          delay_num,
+          delay_den,
+          dispose_op,
+          blend_op,
+        ].pack("NNNNNnnCC")
+      end
+
+      # The size of the raw content this chunk was read from; used to detect
+      # truncated or oversized fcTL chunks while validating.
+      # @return [Integer, nil]
+      attr_accessor :content_length
+
+      # Validates this frame control chunk against the APNG specification.
+      # @param canvas_width [Integer] Width of the default image canvas.
+      # @param canvas_height [Integer] Height of the default image canvas.
+      # @param first_frame [true, false] Whether this is the first frame in
+      #   the animation. The first frame must cover the full canvas.
+      # @raise [ChunkyPNG::ExpectationFailed] If any field is invalid.
+      def validate!(canvas_width, canvas_height, first_frame: false)
+        if content_length && content_length != 26
+          raise ChunkyPNG::ExpectationFailed, "Expected the fcTL chunk to contain 26 bytes, got #{content_length}!"
+        end
+
+        unless dispose_op == ChunkyPNG::APNG_DISPOSE_OP_NONE ||
+               dispose_op == ChunkyPNG::APNG_DISPOSE_OP_BACKGROUND ||
+               dispose_op == ChunkyPNG::APNG_DISPOSE_OP_PREVIOUS
+          raise ChunkyPNG::ExpectationFailed, "Unknown dispose operation #{dispose_op.inspect}!"
+        end
+
+        unless blend_op == ChunkyPNG::APNG_BLEND_OP_SOURCE || blend_op == ChunkyPNG::APNG_BLEND_OP_OVER
+          raise ChunkyPNG::ExpectationFailed, "Unknown blend operation #{blend_op.inspect}!"
+        end
+
+        if width == 0 || height == 0
+          raise ChunkyPNG::ExpectationFailed, "Frame dimensions should be larger than zero, got #{width}x#{height}!"
+        end
+
+        if x_offset < 0 || y_offset < 0 || x_offset + width > canvas_width || y_offset + height > canvas_height
+          raise ChunkyPNG::ExpectationFailed,
+            "Frame region #{x_offset},#{y_offset}:#{width}x#{height} does not fit on the #{canvas_width}x#{canvas_height} canvas!"
+        end
+
+        if first_frame && (x_offset != 0 || y_offset != 0 || width != canvas_width || height != canvas_height)
+          raise ChunkyPNG::ExpectationFailed,
+            "The first frame must cover the full #{canvas_width}x#{canvas_height} canvas, got #{x_offset},#{y_offset}:#{width}x#{height}!"
+        end
+      end
+    end
+
+    # The Frame Data (fdAT) chunk holds (part of) the compressed pixel data of
+    # a frame that is not the default image. It has the same structure as an
+    # IDAT chunk, but is prefixed with the frame's sequence number.
+    #
+    # The data of a single frame can be split over multiple fdAT chunks; all
+    # chunks for one frame need to be concatenated before inflation.
+    #
+    # @see ChunkyPNG::Chunk::ImageData
+    # @see https://wiki.mozilla.org/APNG_Specification#.60fdAT.60
+    class FrameData < Base
+      # @return [Integer] Sequence number of the animation chunk.
+      attr_accessor :sequence_number
+
+      # @return [String] The (part of the) compressed pixel data.
+      attr_accessor :data
+
+      # @param sequence_number [Integer] The sequence number of this chunk.
+      # @param data [String] The compressed pixel data for this chunk.
+      def initialize(sequence_number = 0, data = "")
+        super("fdAT")
+        @sequence_number, @data = sequence_number, data
+      end
+
+      # Reads a fdAT chunk.
+      # @param type [String] The chunk type indicator (= "fdAT").
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameData] The loaded chunk.
+      # @raise [ChunkyPNG::ExpectationFailed] If the chunk is shorter than 4
+      #   bytes.
+      def self.read(type, content)
+        raise ChunkyPNG::ExpectationFailed, "The fdAT chunk should be at least 4 bytes long, got #{content.bytesize}!" if content.bytesize < 4
+        sequence_number = content.unpack1("N")
+        new(sequence_number, content.byteslice(4..-1))
+      end
+
+      # @return [String] The content for this chunk, with the sequence number
+      #   prefixed to the compressed pixel data.
+      def content
+        [sequence_number].pack("N") << data
+      end
+
+      # Inflates and combines the data of the fdAT chunks of one frame.
+      # @param data_chunks [Array<ChunkyPNG::Chunk::FrameData>] The chunks
+      #   that together hold the frame's pixel data.
+      # @return [String] The combined, inflated pixeldata.
+      def self.combine_chunks(data_chunks)
+        ImageData.combine_chunks(data_chunks.map { |c| ImageData.new("IDAT", c.data) })
+      end
+    end
+
     # The CompressedText (zTXt) chunk contains keyword/value metadata about the
     # PNG stream. In this chunk, the value is compressed using Deflate
     # compression.
@@ -467,6 +701,9 @@ module ChunkyPNG
       "zTXt" => CompressedText,
       "iTXt" => InternationalText,
       "pHYs" => Physical,
+      "acTL" => AnimationControl,
+      "fcTL" => FrameControl,
+      "fdAT" => FrameData,
     }
   end
 end

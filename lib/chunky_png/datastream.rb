@@ -37,6 +37,20 @@ module ChunkyPNG
     # @return [Array<ChunkyPNG::Chunk::ImageData>]
     attr_accessor :data_chunks
 
+    # The Animation Control chunk, if this datastream is an animated PNG.
+    # @return [ChunkyPNG::Chunk::AnimationControl, nil]
+    attr_accessor :animation_chunk
+
+    # The frame chunks of this animation as pairs of a
+    # {ChunkyPNG::Chunk::FrameControl} chunk and the list of IDAT or fdAT
+    # chunks that hold the frame's pixel data.
+    #
+    # If the default image is part of the animation, its frame is the first
+    # entry in this list and its data chunks are regular IDAT chunks.
+    #
+    # @return [Array<Array(ChunkyPNG::Chunk::FrameControl, Array<ChunkyPNG::Chunk::Base>)>]
+    attr_accessor :frame_chunks
+
     # The empty chunk that signals the end of this datastream
     # @return [ChunkyPNG::Chunk::Header]
     attr_accessor :end_chunk
@@ -45,6 +59,7 @@ module ChunkyPNG
     def initialize
       @other_chunks = []
       @data_chunks  = []
+      @frame_chunks = []
     end
 
     ##############################################################################
@@ -78,17 +93,59 @@ module ChunkyPNG
         verify_signature!(io)
 
         ds = new
+        expected_sequence_number = 0
+        default_image_frame = nil
+        idat_seen = false
         while ds.end_chunk.nil?
           chunk = ChunkyPNG::Chunk.read(io)
           case chunk
             when ChunkyPNG::Chunk::Header       then ds.header_chunk = chunk
             when ChunkyPNG::Chunk::Palette      then ds.palette_chunk = chunk
             when ChunkyPNG::Chunk::Transparency then ds.transparency_chunk = chunk
-            when ChunkyPNG::Chunk::ImageData    then ds.data_chunks << chunk
             when ChunkyPNG::Chunk::Physical     then ds.physical_chunk = chunk
+            when ChunkyPNG::Chunk::AnimationControl then ds.animation_chunk = chunk
+            when ChunkyPNG::Chunk::FrameControl
+              frame_number = ds.frame_chunks.length + 1
+              begin
+                chunk.validate!(ds.header_chunk.width, ds.header_chunk.height, first_frame: frame_number == 1 && !idat_seen)
+              rescue ChunkyPNG::Exception => e
+                raise ChunkyPNG::ExpectationFailed, "Invalid fcTL chunk for frame #{frame_number}: #{e.message}"
+              end
+
+              if chunk.sequence_number != expected_sequence_number && ds.animation_chunk
+                raise ChunkyPNG::ExpectationFailed,
+                  "Invalid sequence number #{chunk.sequence_number} for the fcTL chunk of frame #{frame_number}, expected #{expected_sequence_number}!"
+              end
+              expected_sequence_number += 1 if ds.animation_chunk
+
+              frame = [chunk, []]
+              ds.frame_chunks << frame
+              # The default image is part of the animation only when its
+              # fcTL chunk precedes the IDAT chunks.
+              default_image_frame = frame if frame_number == 1 && !idat_seen
+            when ChunkyPNG::Chunk::ImageData
+              idat_seen = true
+              ds.data_chunks << chunk
+              default_image_frame[1] << chunk if default_image_frame
+            when ChunkyPNG::Chunk::FrameData
+              unless ds.animation_chunk
+                raise ChunkyPNG::ExpectationFailed, "Found a fdAT chunk but no acTL chunk in this datastream!"
+              end
+              if chunk.sequence_number != expected_sequence_number
+                raise ChunkyPNG::ExpectationFailed,
+                  "Invalid fdAT sequence number #{chunk.sequence_number}, expected #{expected_sequence_number}!"
+              end
+              expected_sequence_number += 1
+              raise ChunkyPNG::ExpectationFailed, "Found a fdAT chunk without a preceding fcTL chunk!" if ds.frame_chunks.empty?
+              ds.frame_chunks.last[1] << chunk
             when ChunkyPNG::Chunk::End          then ds.end_chunk = chunk
             else ds.other_chunks << chunk
           end
+        end
+
+        if ds.animation_chunk && ds.frame_chunks.length != ds.animation_chunk.num_frames
+          raise ChunkyPNG::ExpectationFailed,
+            "The acTL chunk declares #{ds.animation_chunk.num_frames} frames but found #{ds.frame_chunks.length} fcTL chunks!"
         end
         ds
       end
@@ -122,6 +179,8 @@ module ChunkyPNG
     # @yieldparam [ChunkyPNG::Chunk::Base] chunk A chunk in this datastream.
     # @see ChunkyPNG::Datastream#chunks
     def each_chunk
+      return each_animated_chunk { |chunk| yield(chunk) } if animated?
+
       yield(header_chunk)
       other_chunks.each { |chunk| yield(chunk) }
       yield(palette_chunk)      if palette_chunk
@@ -129,6 +188,45 @@ module ChunkyPNG
       yield(physical_chunk)     if physical_chunk
       data_chunks.each { |chunk| yield(chunk) }
       yield(end_chunk)
+    end
+
+    # Enumerates the chunks of an animated datastream in the order required by
+    # the APNG specification: IHDR, acTL, other chunks, PLTE/tRNS, the default
+    # image IDATs (with the first frame's fcTL when applicable), and the
+    # remaining frames as fcTL/fdAT groups.
+    #
+    # @yield [chunk] Yields the chunks in this datastream in APNG order.
+    def each_animated_chunk
+      yield(header_chunk)
+      yield(animation_chunk)
+      other_chunks.each { |chunk| yield(chunk) }
+      yield(palette_chunk)      if palette_chunk
+      yield(transparency_chunk) if transparency_chunk
+      yield(physical_chunk)     if physical_chunk
+
+      first_control, first_data = frame_chunks.first
+      first_uses_idat = !first_data.empty? && first_data.first.is_a?(ChunkyPNG::Chunk::ImageData)
+
+      if first_uses_idat
+        yield(first_control)
+        first_data.each { |chunk| yield(chunk) }
+        remaining_frames = frame_chunks[1..-1] || []
+      else
+        data_chunks.each { |chunk| yield(chunk) }
+        remaining_frames = frame_chunks
+      end
+
+      remaining_frames.each do |control, chunks|
+        yield(control)
+        chunks.each { |chunk| yield(chunk) }
+      end
+
+      yield(end_chunk)
+    end
+
+    # @return [true, false] Whether this datastream contains animation data.
+    def animated?
+      !animation_chunk.nil?
     end
 
     # Returns an enumerator instance for this datastream's chunks.
@@ -152,6 +250,20 @@ module ChunkyPNG
     # @return [String] The uncompressed image data for this datastream
     def imagedata
       ChunkyPNG::Chunk::ImageData.combine_chunks(data_chunks)
+    end
+
+    # Returns the uncompressed pixel data for a given frame, combining and
+    # inflating its IDAT or fdAT chunks.
+    # @param frame_index [Integer] The zero-based index of the frame.
+    # @return [String] The uncompressed pixel data for the frame.
+    def frame_imagedata(frame_index)
+      _control, chunks = frame_chunks.fetch(frame_index)
+      image_data, frame_data = chunks.partition { |chunk| chunk.is_a?(ChunkyPNG::Chunk::ImageData) }
+      if frame_data.empty?
+        ChunkyPNG::Chunk::ImageData.combine_chunks(image_data)
+      else
+        ChunkyPNG::Chunk::FrameData.combine_chunks(frame_data)
+      end
     end
 
     ##################################################################################

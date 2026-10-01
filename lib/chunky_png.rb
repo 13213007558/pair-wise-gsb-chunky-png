@@ -102,6 +102,33 @@ module ChunkyPNG
   # @private
   FILTER_PAETH          = 4
 
+  ### APNG (Animated PNG) defined constants
+
+  # After rendering the frame, the output buffer is left in place.
+  # @private
+  APNG_DISPOSE_OP_NONE       = 0
+
+  # After rendering the frame, the frame region is restored to fully
+  # transparent black before the next frame is rendered.
+  # @private
+  APNG_DISPOSE_OP_BACKGROUND = 1
+
+  # After rendering the frame, the frame region is restored to the content
+  # that was in the output buffer before the frame was rendered.
+  # @private
+  APNG_DISPOSE_OP_PREVIOUS   = 2
+
+  # The frame's alpha values replace the alpha values of the output buffer
+  # within the frame's region. This blend operation is always used for the
+  # first frame, regardless of the value in its fcTL chunk.
+  # @private
+  APNG_BLEND_OP_SOURCE       = 0
+
+  # The frame is alpha-composited (source over) onto the output buffer
+  # within the frame's region.
+  # @private
+  APNG_BLEND_OP_OVER         = 1
+
   ###################################################
   # ChunkyPNG exception classes
   ###################################################
@@ -164,3 +191,7 @@ require "chunky_png/dimension"
 # Canvas / Image classes
 require "chunky_png/canvas"
 require "chunky_png/image"
+
+# Animated PNG support
+require "chunky_png/frame"
+require "chunky_png/animation"

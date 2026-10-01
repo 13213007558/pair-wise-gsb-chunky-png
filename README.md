@@ -23,6 +23,8 @@ memory leaking image library.
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly
   optimized saving routine.
+- Reads and writes animated PNG (APNG) images with per-frame timing,
+  offsets and APNG blend/dispose compositing.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
 
@@ -56,6 +58,14 @@ image.save('with_metadata.png') # Overwrite file
 # Low level access to PNG chunks
 png_stream = ChunkyPNG::Datastream.from_file('filename.png')
 png_stream.each_chunk { |chunk| p chunk.type }
+
+# Animations (APNG): raw frame rectangles and fully composited canvases
+animation = ChunkyPNG::Animation.from_file('animation.png')
+animation.frames.each do |frame|
+  puts "#{frame.width}x#{frame.height} @ #{frame.x_offset},#{frame.y_offset}, " \
+       + "#{frame.delay_num}/#{frame.delay_den}s"
+end
+full_canvas_per_frame = animation.composited_frames
 ```
 
 Also check out the screencast on the ChunkyPNG homepage by John Davison,
