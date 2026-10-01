@@ -25,6 +25,9 @@ memory leaking image library.
   optimized saving routine.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
+- Marker-controlled watershed segmentation of height maps, with selectable
+  4- or 8-connectivity, optional masking, and scan-order independent
+  handling of plateaus.
 
 Also, have a look at [OilyPNG](https://github.com/wvanbergen/oily_png) which
 is a mixin module that implements some of the ChunkyPNG algorithms in C, which
@@ -57,6 +60,31 @@ image.save('with_metadata.png') # Overwrite file
 png_stream = ChunkyPNG::Datastream.from_file('filename.png')
 png_stream.each_chunk { |chunk| p chunk.type }
 ```
+
+### Watershed segmentation
+
+```ruby
+# Segment a height map using marker-controlled watershed flooding.
+heights = [
+  [1, 2, 3, 2, 1],
+  [1, 2, 3, 2, 1],
+]
+markers = [
+  [1, 0, 0, 0, 2],
+  [0, 0, 0, 0, 0],
+]
+
+result = ChunkyPNG::Watershed.segment(heights, markers, connectivity: 8)
+result.labels     # => [[1, 1, -1, 2, 2], [1, 1, -1, 2, 2]] (-1 marks boundary pixels)
+result.boundaries # => boundary map of booleans
+result.to_image.save('segmentation.png') # visualize the regions
+```
+
+![Watershed segmentation example](spec/resources/watershed_segmentation.png)
+
+The example above (regenerate with `ruby -Ilib examples/watershed.rb`)
+segments a height map with three basins using one marker per basin. The
+black lines are the watershed boundaries where the floods meet.
 
 Also check out the screencast on the ChunkyPNG homepage by John Davison,
 which illustrates basic usage of the library on the [ChunkyPNG
