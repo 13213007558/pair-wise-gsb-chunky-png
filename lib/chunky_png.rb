@@ -102,6 +102,36 @@ module ChunkyPNG
   # @private
   FILTER_PAETH          = 4
 
+  ### APNG frame disposal methods
+
+  # Indicates that the frame is left in place after rendering; the next frame
+  # is rendered on top of it.
+  # @see https://wiki.mozilla.org/APNG_Specification#.60fcTL.60:_The_Frame_Control_Chunk
+  # @private
+  DISPOSE_OP_NONE       = 0
+
+  # Indicates that the frame's region is cleared to fully transparent pixels
+  # (or to the default image background for the first frame) after rendering.
+  # @private
+  DISPOSE_OP_BACKGROUND = 1
+
+  # Indicates that the frame's region is restored to what it was before the
+  # frame was rendered.
+  # @private
+  DISPOSE_OP_PREVIOUS   = 2
+
+  ### APNG frame blending methods
+
+  # Indicates that the frame's pixels replace the content of the output
+  # buffer within the frame's region, including its alpha channel.
+  # @private
+  BLEND_OP_SOURCE       = 0
+
+  # Indicates that the frame's pixels are alpha-composited (Porter-Duff
+  # source-over) onto the output buffer.
+  # @private
+  BLEND_OP_OVER         = 1
+
   ###################################################
   # ChunkyPNG exception classes
   ###################################################
@@ -164,3 +194,4 @@ require "chunky_png/dimension"
 # Canvas / Image classes
 require "chunky_png/canvas"
 require "chunky_png/image"
+require "chunky_png/animation"

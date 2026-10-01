@@ -271,7 +271,7 @@ module ChunkyPNG
       # @return [String] The combined, inflated pixeldata as binary string
       def self.combine_chunks(data_chunks)
         zstream = Zlib::Inflate.new
-        data_chunks.each { |c| zstream << c.content }
+        data_chunks.each { |c| zstream << (c.respond_to?(:image_content) ? c.image_content : c.content) }
         inflated = zstream.finish
         zstream.close
         inflated
@@ -287,6 +287,185 @@ module ChunkyPNG
         streamdata = Zlib::Deflate.deflate(data, level)
         # TODO: Split long streamdata over multiple chunks
         [ChunkyPNG::Chunk::ImageData.new("IDAT", streamdata)]
+      end
+
+      # Returns the compressed image data without any APNG framing. This is
+      # the counterpart of {FrameData#image_content} and makes the two chunk
+      # types interchangeable when inflating pixel data.
+      # @return [String] The compressed image data.
+      def image_content
+        content
+      end
+    end
+
+    # The Animation Control (acTL) chunk marks a PNG datastream as an
+    # animated PNG (APNG). It must occur before the first IDAT chunk.
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification#.60acTL.60:_The_Animation_Control_Chunk
+    class AnimationControl < Base
+      # @return [Integer] The number of frames in the animation, according
+      #   to the acTL chunk.
+      attr_accessor :num_frames
+
+      # @return [Integer] The number of times the animation loops. A value
+      #   of 0 means the animation should repeat indefinitely.
+      attr_accessor :num_plays
+
+      def initialize(num_frames = 1, num_plays = 0)
+        super("acTL")
+        @num_frames, @num_plays = num_frames, num_plays
+      end
+
+      # Reads the 8 bytes of content from the chunk.
+      # @param type [String] The four character chunk type indicator.
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::AnimationControl]
+      # @raise [ChunkyPNG::ExpectationFailed] if the chunk does not contain
+      #   exactly 8 bytes.
+      def self.read(type, content)
+        unless content.bytesize == 8
+          raise ChunkyPNG::ExpectationFailed, "The acTL chunk should contain exactly 8 bytes, got #{content.bytesize}!"
+        end
+        num_frames, num_plays = content.unpack("NN")
+        new(num_frames, num_plays)
+      end
+
+      # @return [String] The 8-byte content for the chunk.
+      def content
+        [num_frames, num_plays].pack("NN")
+      end
+    end
+
+    # The Frame Control (fcTL) chunk describes one frame of an APNG
+    # animation: its position and dimensions, its display duration and the
+    # blend and dispose operations to use when rendering it.
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification#.60fcTL.60:_The_Frame_Control_Chunk
+    class FrameControl < Base
+      # @return [Integer] The sequence number of this chunk within the
+      #   datastream. The first fcTL chunk always has sequence number 0.
+      attr_accessor :sequence_number
+
+      # @return [Integer] The width of the frame, in pixels.
+      attr_accessor :width
+
+      # @return [Integer] The height of the frame, in pixels.
+      attr_accessor :height
+
+      # @return [Integer] The x-position of the frame within the default
+      #   image's viewport.
+      attr_accessor :x_offset
+
+      # @return [Integer] The y-position of the frame within the default
+      #   image's viewport.
+      attr_accessor :y_offset
+
+      # @return [Integer] The numerator of the frame delay, in seconds.
+      attr_accessor :delay_num
+
+      # @return [Integer] The denominator of the frame delay, in seconds.
+      #   A value of 0 is normalized to 100 per the APNG specification.
+      attr_accessor :delay_den
+
+      # @return [Integer] The type of frame area restore after rendering
+      #   (one of the ChunkyPNG::DISPOSE_OP_* constants).
+      attr_accessor :dispose_op
+
+      # @return [Integer] The type of frame area blending used while
+      #   rendering (one of the ChunkyPNG::BLEND_OP_* constants).
+      attr_accessor :blend_op
+
+      def initialize(sequence_number: 0, width: 0, height: 0, x_offset: 0, y_offset: 0,
+                     delay_num: 1, delay_den: 100, dispose_op: ChunkyPNG::DISPOSE_OP_NONE,
+                     blend_op: ChunkyPNG::BLEND_OP_SOURCE)
+        super("fcTL")
+        @sequence_number = sequence_number
+        @width           = width
+        @height          = height
+        @x_offset        = x_offset
+        @y_offset        = y_offset
+        @delay_num       = delay_num
+        @delay_den       = delay_den
+        @dispose_op      = dispose_op
+        @blend_op        = blend_op
+      end
+
+      # Reads the 26 bytes of content from the chunk.
+      #
+      # Only the chunk length is validated while reading; validation of the
+      # individual field values (which requires knowing the frame index and
+      # the datastream dimensions) is performed by the datastream.
+      #
+      # @param type [String] The four character chunk type indicator.
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameControl]
+      # @raise [ChunkyPNG::ExpectationFailed] if the chunk does not contain
+      #   exactly 26 bytes.
+      def self.read(type, content)
+        unless content.bytesize == 26
+          raise ChunkyPNG::ExpectationFailed, "The fcTL chunk should contain exactly 26 bytes, got #{content.bytesize}!"
+        end
+        sequence_number, width, height, x_offset, y_offset, delay_num, delay_den,
+          dispose_op, blend_op = content.unpack("NNNNNnnCC")
+        new(sequence_number: sequence_number, width: width, height: height,
+            x_offset: x_offset, y_offset: y_offset, delay_num: delay_num,
+            delay_den: delay_den, dispose_op: dispose_op, blend_op: blend_op)
+      end
+
+      # @return [String] The 26-byte content for the chunk.
+      def content
+        [
+          sequence_number, width, height, x_offset, y_offset,
+          delay_num, delay_den, dispose_op, blend_op,
+        ].pack("NNNNNnnCC")
+      end
+
+      # Returns the frame duration as a reduced Rational, in seconds.
+      # A denominator of 0 is treated as 100, as specified by the APNG
+      # specification.
+      # @return [Rational] The frame duration in seconds.
+      def delay
+        Rational(delay_num || 0, delay_den.to_i.zero? ? 100 : delay_den)
+      end
+    end
+
+    # The Frame Data (fdAT) chunk holds the compressed pixel data of an
+    # animation frame other than the default image's frame. It has the same
+    # contents as an IDAT chunk, prefixed with the frame's sequence number.
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification#.60fdAT.60:_The_Frame_Data_Chunk
+    class FrameData < Base
+      # @return [Integer] The sequence number of this chunk.
+      attr_accessor :sequence_number
+
+      # @return [String] The deflated pixel data (i.e. the part the chunk
+      #   shares with an IDAT chunk).
+      attr_accessor :image_content
+
+      def initialize(sequence_number = 1, image_content = "")
+        super("fdAT")
+        @sequence_number, @image_content = sequence_number, image_content
+      end
+
+      # Reads the chunk, separating the sequence number from the deflated
+      # image data.
+      # @param type [String] The four character chunk type indicator.
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameData]
+      # @raise [ChunkyPNG::ExpectationFailed] if the chunk contains no image
+      #   data besides the 4-byte sequence number.
+      def self.read(type, content)
+        if content.bytesize < 4
+          raise ChunkyPNG::ExpectationFailed,
+            "The fdAT chunk should contain a sequence number and image data, got #{content.bytesize} bytes!"
+        end
+        sequence_number = content.unpack1("N")
+        new(sequence_number, content.byteslice(4..-1))
+      end
+
+      # @return [String] The sequence number and deflated image data.
+      def content
+        [sequence_number].pack("N") << image_content
       end
     end
 
@@ -461,6 +640,9 @@ module ChunkyPNG
       "IHDR" => Header,
       "IEND" => End,
       "IDAT" => ImageData,
+      "acTL" => AnimationControl,
+      "fcTL" => FrameControl,
+      "fdAT" => FrameData,
       "PLTE" => Palette,
       "tRNS" => Transparency,
       "tEXt" => Text,
