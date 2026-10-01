@@ -7,6 +7,12 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add <tt>ChunkyPNG::Watershed</tt>: marker-controlled watershed segmentation
+  of height maps. Floods one height level at a time with 4- or 8-connectivity,
+  supports masking, and assigns contested plateau pixels to watershed lines
+  instead of the first scanned marker. See +examples/watershed.rb+ for a
+  visualization example.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

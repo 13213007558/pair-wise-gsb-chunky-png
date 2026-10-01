@@ -25,6 +25,9 @@ memory leaking image library.
   optimized saving routine.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
+- Marker-controlled watershed segmentation of height maps
+  (`ChunkyPNG::Watershed`), with selectable 4/8-connectivity, masking and
+  scan-order independent results. See `examples/watershed.rb`.
 
 Also, have a look at [OilyPNG](https://github.com/wvanbergen/oily_png) which
 is a mixin module that implements some of the ChunkyPNG algorithms in C, which
