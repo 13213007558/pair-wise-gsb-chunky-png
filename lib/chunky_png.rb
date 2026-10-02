@@ -161,6 +161,9 @@ require "chunky_png/point"
 require "chunky_png/vector"
 require "chunky_png/dimension"
 
+# Distance fields
+require "chunky_png/distance_field"
+
 # Canvas / Image classes
 require "chunky_png/canvas"
 require "chunky_png/image"
