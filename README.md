@@ -23,6 +23,7 @@ memory leaking image library.
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly
   optimized saving routine.
+- Pure Ruby Poisson image blending with source or mixed gradients.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
 
@@ -46,6 +47,21 @@ avatar = ChunkyPNG::Image.from_file('avatar.png')
 badge  = ChunkyPNG::Image.from_file('no_ie_badge.png')
 avatar.compose!(badge, 10, 10)
 avatar.save('composited.png', :fast_rgba) # Force the fast saving routine.
+
+# Paste a source patch with Poisson blending. The mask is source-sized and
+# uses opaque white for selected pixels and opaque black elsewhere.
+target = ChunkyPNG::Canvas.from_file('target.png')
+source = ChunkyPNG::Canvas.from_file('source_patch.png')
+mask = ChunkyPNG::Canvas.new(source.width, source.height, ChunkyPNG::Color::BLACK)
+# ...set selected mask pixels to ChunkyPNG::Color::WHITE...
+result = target.poisson_blend(source, mask, 20, 30,
+                              :mode => :mixed, :iterations => 1000,
+                              :tolerance => 0.01)
+raise "Poisson blend did not converge: #{result.residual}" unless result.converged?
+blended = result.canvas
+
+# R, G and B are solved independently and the target alpha channel is
+# preserved. The mask is binary; source alpha is not a soft coverage weight.
 
 # Accessing metadata
 image = ChunkyPNG::Image.from_file('with_metadata.png')

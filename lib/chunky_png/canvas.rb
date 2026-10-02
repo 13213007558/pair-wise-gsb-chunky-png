@@ -11,6 +11,7 @@ require "chunky_png/canvas/operations"
 require "chunky_png/canvas/drawing"
 require "chunky_png/canvas/resampling"
 require "chunky_png/canvas/masking"
+require "chunky_png/canvas/poisson_blending"
 
 module ChunkyPNG
   # The ChunkyPNG::Canvas class represents a raster image as a matrix of
