@@ -18,8 +18,10 @@ module ChunkyPNG
   #
   # This class supports loading a Canvas from a PNG datastream, and creating a
   # {ChunkyPNG::Datastream PNG datastream} based on this matrix. ChunkyPNG
-  # only supports 8-bit color depth, otherwise all of the PNG format's
-  # variations are supported for both reading and writing.
+  # represents pixels using 8-bit color depth; use {ChunkyPNG::Canvas16}
+  # when 16-bit samples must be preserved. All of the PNG format's
+  # variations supported by this pixel representation are available for
+  # reading and writing.
   #
   # This class offers per-pixel access to the matrix by using x,y coordinates.
   # It uses a palette (see {ChunkyPNG::Palette}) to keep track of the

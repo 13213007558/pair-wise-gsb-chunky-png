@@ -14,6 +14,10 @@ memory leaking image library.
 - Decodes any image that the PNG standard allows. This includes all standard
   color modes, all bit depths, all transparency, and interlacing and filtering
   options.
+- `ChunkyPNG::Canvas16` provides an explicit 16-bit-per-sample mode for
+  grayscale, grayscale alpha, RGB and RGBA PNGs, preserving the complete
+  channel values through filtering and Adam7 interlacing. The original
+  `ChunkyPNG::Canvas` API remains 8-bit.
 - Encodes images supports all color modes (true color, grayscale, and indexed)
   and transparency for all these color modes. The best color mode will be
   chosen automatically, based on the amount of used colors.
@@ -40,6 +44,17 @@ png = ChunkyPNG::Image.new(16, 16, ChunkyPNG::Color::TRANSPARENT)
 png[1,1] = ChunkyPNG::Color.rgba(10, 20, 30, 128)
 png[2,1] = ChunkyPNG::Color('black @ 0.5')
 png.save('filename.png', :interlace => true)
+
+# Preserve 16-bit channel values with the explicit high-bit-depth canvas
+image16 = ChunkyPNG::Canvas16.from_file('deep.png')
+image16[0, 0] = ChunkyPNG::Color16.rgba(65_535, 65_534, 65_533, 65_532)
+image16.save('deep-copy.png')
+
+# 8-bit to 16-bit expansion duplicates the byte (255 -> 65535);
+# 16-bit to 8-bit conversion uses nearest-integer scaling.
+canvas8  = ChunkyPNG::Canvas.new(8, 8, ChunkyPNG::Color::RED)
+canvas16 = canvas8.to_canvas16
+back8    = canvas16.to_canvas8
 
 # Compose images using alpha blending.
 avatar = ChunkyPNG::Image.from_file('avatar.png')

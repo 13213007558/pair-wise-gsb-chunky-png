@@ -115,10 +115,10 @@ module ChunkyPNG
     # depth, color mode, compression method, filtering method and interlace
     # method.
     #
-    # ChunkyPNG supports all values for these variables that are defined in the
-    # PNG spec, except for color depth: Only 8-bit depth images are supported.
-    # Note that it is still possible to access the chunk for such an image, but
-    # ChunkyPNG will raise an exception if you try to access the pixel data.
+    # ChunkyPNG reads and writes all supported header fields. The 8-bit
+    # {ChunkyPNG::Canvas} accepts all PNG variants by reducing samples, while
+    # {ChunkyPNG::Canvas16} preserves 8- and 16-bit samples for direct color
+    # modes.
     #
     # @see https://www.w3.org/TR/PNG/#11IHDR
     class Header < Base
