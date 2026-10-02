@@ -119,13 +119,13 @@ module ChunkyPNG
         # Do not create a palette when the encoding is given and does not require a palette.
         if encoding[:color_mode]
           if encoding[:color_mode] == ChunkyPNG::COLOR_INDEXED
-            self.encoding_palette = palette
+            self.encoding_palette = palette unless encoding_palette && encoding_palette.can_encode?
             encoding[:bit_depth] ||= encoding_palette.determine_bit_depth
           else
             encoding[:bit_depth] ||= 8
           end
         else
-          self.encoding_palette = palette
+          self.encoding_palette = palette unless encoding_palette && encoding_palette.can_encode?
           suggested_color_mode, suggested_bit_depth = encoding_palette.best_color_settings
           encoding[:color_mode] ||= suggested_color_mode
           encoding[:bit_depth]  ||= suggested_bit_depth
