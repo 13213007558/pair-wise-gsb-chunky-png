@@ -3,6 +3,7 @@
 require "chunky_png/canvas/png_encoding"
 require "chunky_png/canvas/png_decoding"
 require "chunky_png/canvas/adam7_interlacing"
+require "chunky_png/canvas/adam7_progressive_decoder"
 require "chunky_png/canvas/stream_exporting"
 require "chunky_png/canvas/stream_importing"
 require "chunky_png/canvas/data_url_exporting"

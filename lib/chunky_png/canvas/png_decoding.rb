@@ -54,31 +54,131 @@ module ChunkyPNG
 
       alias from_stream from_io
 
+      # Progressively decodes an Adam7 encoded PNG stream.
+      # @param [IO, #read] io The stream to read from.
+      # @param [Integer, nil] idat_chunk_size The maximum number of IDAT bytes to decode at once.
+      # @yield (see #from_datastream_progressive)
+      # @yieldparam (see #from_datastream_progressive)
+      # @return (see #from_datastream_progressive)
+      def from_io_progressive(io, idat_chunk_size = 4096)
+        ChunkyPNG::Datastream.verify_signature!(io)
+
+        ds = ChunkyPNG::Datastream.new
+        decoder = nil
+        snapshot_count = 0
+        end_chunk = nil
+
+        while end_chunk.nil?
+          type, length = read_progressive_chunk_header(io)
+
+          if type == "IDAT"
+            decoder ||= progressive_adam7_decoder(ds)
+            crc = Zlib.crc32(type)
+            each_io_fragment(io, length, idat_chunk_size) do |fragment|
+              crc = Zlib.crc32(fragment, crc)
+              decoder.feed(fragment)
+              snapshot_count = yield_progressive_snapshots(decoder, snapshot_count, block_given?) { |snapshot| yield(snapshot) }
+            end
+            verify_progressive_crc!(crc, io)
+          else
+            content = read_exact_bytes(io, length)
+            crc = Zlib.crc32(content, Zlib.crc32(type))
+            verify_progressive_crc!(crc, io)
+            chunk = ChunkyPNG::Chunk::CHUNK_TYPES.fetch(type, ChunkyPNG::Chunk::Generic).read(type, content)
+
+            case chunk
+              when ChunkyPNG::Chunk::Header       then ds.header_chunk = chunk
+              when ChunkyPNG::Chunk::Palette      then ds.palette_chunk = chunk
+              when ChunkyPNG::Chunk::Transparency then ds.transparency_chunk = chunk
+              when ChunkyPNG::Chunk::End          then end_chunk = chunk
+            end
+          end
+        end
+
+        raise ChunkyPNG::ExpectationFailed, "No IDAT chunk found!" unless decoder
+        decoder.finish
+
+        if block_given?
+          yield_progressive_snapshots(decoder, snapshot_count, true) { |snapshot| yield(snapshot) }
+          decoder.canvas
+        else
+          decoder
+        end
+      end
+
+      alias from_stream_progressive from_io_progressive
+
       # Decodes the Canvas from a PNG datastream instance.
       # @param [ChunkyPNG::Datastream] ds The datastream to decode.
       # @return [ChunkyPNG::Canvas] The canvas decoded from the PNG datastream.
       def from_datastream(ds)
-        width      = ds.header_chunk.width
-        height     = ds.header_chunk.height
-        color_mode = ds.header_chunk.color
-        interlace  = ds.header_chunk.interlace
-        depth      = ds.header_chunk.depth
+        width, height, color_mode, depth, interlace, decoding_palette, transparent_color = png_decoding_options(ds)
 
         if width == 0 || height == 0
           raise ExpectationFailed, "Invalid image size, width: #{width}, height: #{height}"
         end
 
-        decoding_palette, transparent_color = nil, nil
-        case color_mode
-          when ChunkyPNG::COLOR_INDEXED
-            decoding_palette = ChunkyPNG::Palette.from_chunks(ds.palette_chunk, ds.transparency_chunk)
-          when ChunkyPNG::COLOR_TRUECOLOR
-            transparent_color = ds.transparency_chunk.truecolor_entry(depth) if ds.transparency_chunk
-          when ChunkyPNG::COLOR_GRAYSCALE
-            transparent_color = ds.transparency_chunk.grayscale_entry(depth) if ds.transparency_chunk
+        decode_png_pixelstream(ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color)
+      end
+
+      # Creates a progressive Adam7 decoder for a PNG datastream.
+      # @param [ChunkyPNG::Datastream] ds The datastream containing IHDR, palette and IDAT chunks.
+      # @return [ChunkyPNG::Canvas::Adam7ProgressiveDecoder] The decoder instance.
+      def progressive_adam7_decoder(ds)
+        width, height, color_mode, depth, interlace, decoding_palette, transparent_color = png_decoding_options(ds)
+        unless interlace == ChunkyPNG::INTERLACING_ADAM7
+          raise ChunkyPNG::NotSupported, "Progressive decoding is only supported for Adam7 interlaced images!"
         end
 
-        decode_png_pixelstream(ds.imagedata, width, height, color_mode, depth, interlace, decoding_palette, transparent_color)
+        Adam7ProgressiveDecoder.new(width, height, color_mode, depth, decoding_palette, transparent_color)
+      end
+
+      # Progressively decodes an Adam7 encoded datastream.
+      # @param [ChunkyPNG::Datastream] ds The datastream to decode.
+      # @param [Integer, nil] chunk_size The maximum number of compressed IDAT bytes to feed at once.
+      # @yield [snapshot] Yields a snapshot whenever a complete pass becomes available.
+      # @yieldparam [ChunkyPNG::Canvas::Adam7ProgressiveSnapshot] snapshot The completed pass snapshot.
+      # @return [ChunkyPNG::Canvas, ChunkyPNG::Canvas::Adam7ProgressiveDecoder] The final canvas when a block
+      #   is given, or the finished decoder otherwise.
+      def from_datastream_progressive(ds, chunk_size = nil)
+        decoder = progressive_adam7_decoder(ds)
+        snapshot_count = 0
+
+        imagedata = ds.data_chunks.map { |data_chunk| data_chunk.content }.join
+        each_idat_fragment(imagedata, chunk_size) do |fragment|
+          decoder.feed(fragment)
+          snapshot_count = yield_progressive_snapshots(decoder, snapshot_count, block_given?) { |snapshot| yield(snapshot) }
+        end
+
+        decoder.finish
+        if block_given?
+          yield_progressive_snapshots(decoder, snapshot_count, true) { |snapshot| yield(snapshot) }
+          decoder.canvas
+        else
+          decoder
+        end
+      end
+
+      # Progressively decodes an Adam7 encoded PNG string.
+      # @param str (see #from_blob)
+      # @param [Integer] chunk_size The maximum number of compressed IDAT bytes to feed at once.
+      # @yield (see #from_datastream_progressive)
+      # @yieldparam (see #from_datastream_progressive)
+      # @return (see #from_datastream_progressive)
+      def from_blob_progressive(str, chunk_size = 1, &block)
+        from_io_progressive(StringIO.new(str, "rb"), chunk_size, &block)
+      end
+
+      alias from_string_progressive from_blob_progressive
+
+      # Progressively decodes an Adam7 encoded PNG file.
+      # @param filename (see #from_file)
+      # @param [Integer, nil] idat_chunk_size The maximum number of IDAT bytes to decode at once.
+      # @yield (see #from_datastream_progressive)
+      # @yieldparam (see #from_datastream_progressive)
+      # @return (see #from_datastream_progressive)
+      def from_file_progressive(filename, idat_chunk_size = 4096, &block)
+        File.open(filename, "rb") { |io| from_io_progressive(io, idat_chunk_size, &block) }
       end
 
       # Decodes a canvas from a PNG encoded pixelstream, using a given width, height,
@@ -106,6 +206,75 @@ module ChunkyPNG
       end
 
       protected
+
+      def png_decoding_options(ds)
+        width      = ds.header_chunk.width
+        height     = ds.header_chunk.height
+        color_mode = ds.header_chunk.color
+        interlace  = ds.header_chunk.interlace
+        depth      = ds.header_chunk.depth
+
+        decoding_palette, transparent_color = nil, nil
+        case color_mode
+          when ChunkyPNG::COLOR_INDEXED
+            decoding_palette = ChunkyPNG::Palette.from_chunks(ds.palette_chunk, ds.transparency_chunk)
+          when ChunkyPNG::COLOR_TRUECOLOR
+            transparent_color = ds.transparency_chunk.truecolor_entry(depth) if ds.transparency_chunk
+          when ChunkyPNG::COLOR_GRAYSCALE
+            transparent_color = ds.transparency_chunk.grayscale_entry(depth) if ds.transparency_chunk
+        end
+
+        [width, height, color_mode, depth, interlace, decoding_palette, transparent_color]
+      end
+
+      def each_idat_fragment(content, chunk_size)
+        return yield(content) if chunk_size.nil? || chunk_size >= content.bytesize
+        raise ArgumentError, "Chunk size should be positive!" if chunk_size <= 0
+
+        position = 0
+        while position < content.bytesize
+          yield(content.byteslice(position, chunk_size))
+          position += chunk_size
+        end
+      end
+
+      def yield_progressive_snapshots(decoder, snapshot_count, yield_snapshots)
+        return snapshot_count unless yield_snapshots
+
+        decoder.snapshots[snapshot_count, decoder.snapshots.length - snapshot_count].each { |snapshot| yield(snapshot) }
+        decoder.snapshots.length
+      end
+
+      def read_progressive_chunk_header(io)
+        header = read_exact_bytes(io, 8)
+        length, type = header.unpack("Na4")
+        [type, length]
+      end
+
+      def read_exact_bytes(io, length)
+        data = String.new.force_encoding(::Encoding::BINARY)
+        while data.bytesize < length
+          fragment = io.read(length - data.bytesize)
+          raise ChunkyPNG::ExpectationFailed, "Couldn't read #{length} bytes from IO stream." if fragment.nil? || fragment.empty?
+          data << fragment
+        end
+        data
+      end
+
+      def each_io_fragment(io, length, chunk_size)
+        remaining = length
+        fragment_size = chunk_size.nil? || chunk_size <= 0 ? length : [chunk_size, length].min
+        while remaining > 0
+          size = [fragment_size, remaining].min
+          yield(read_exact_bytes(io, size))
+          remaining -= size
+        end
+      end
+
+      def verify_progressive_crc!(actual_crc, io)
+        expected_crc = read_exact_bytes(io, 4).unpack("N").first
+        raise ChunkyPNG::CRCMismatch, "Chunk CRC mismatch!" unless actual_crc == expected_crc
+      end
 
       # Decodes a canvas from a non-interlaced PNG encoded pixelstream, using a
       # given width, height and color mode.
@@ -272,7 +441,9 @@ module ChunkyPNG
       # @params (see #decode_png_pixels_from_scanline_indexed_1bit)
       # @return (see #decode_png_pixels_from_scanline_indexed_1bit)
       def decode_png_pixels_from_scanline_truecolor_8bit(stream, pos, width, _decoding_palette)
-        stream.unpack("@#{pos + 1}#{"NX" * width}").map { |c| c | 0x000000ff }
+        stream.unpack("@#{pos + 1}C#{width * 3}").each_slice(3).map do |red, green, blue|
+          ChunkyPNG::Color.rgb(red, green, blue)
+        end
       end
 
       # Decodes a scanline of a 16-bit, true color image into a row of pixels.
@@ -384,7 +555,6 @@ module ChunkyPNG
         pixels = []
         if width > 0 && height > 0
 
-          stream << ChunkyPNG::EXTRA_BYTE if color_mode == ChunkyPNG::COLOR_TRUECOLOR
           pixel_decoder = decode_png_pixels_from_scanline_method(color_mode, depth)
           line_length   = ChunkyPNG::Color.scanline_bytesize(color_mode, depth, width)
           pixel_size    = ChunkyPNG::Color.pixel_bytesize(color_mode, depth)

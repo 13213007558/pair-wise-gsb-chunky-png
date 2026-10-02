@@ -189,9 +189,11 @@ module ChunkyPNG
       # @param [Integer] filtering The filtering method to use.
       # @return [String] The PNG encoded canvas as string.
       def encode_png_image_with_interlacing(color_mode, bit_depth = 8, filtering = ChunkyPNG::FILTER_NONE)
-        stream = "".b
+        stream = String.new.force_encoding(::Encoding::BINARY)
         0.upto(6) do |pass|
           subcanvas = self.class.adam7_extract_pass(pass, self)
+          next if subcanvas.width == 0 || subcanvas.height == 0
+
           subcanvas.encoding_palette = encoding_palette
           subcanvas.encode_png_image_pass_to_stream(stream, color_mode, bit_depth, filtering)
         end
@@ -237,7 +239,10 @@ module ChunkyPNG
       # @param [Array<Integer>] pixels A row of pixels of the original image.
       # @return [String] The encoded scanline as binary string
       def encode_png_pixels_to_scanline_truecolor_8bit(pixels)
-        pixels.pack("x" + ("NX" * width))
+        values = pixels.flat_map do |pixel|
+          [((pixel >> 24) & 0xff), ((pixel >> 16) & 0xff), ((pixel >> 8) & 0xff)]
+        end
+        ([0] + values).pack("C*")
       end
 
       # Encodes a line of pixels using 8-bit truecolor alpha mode.
