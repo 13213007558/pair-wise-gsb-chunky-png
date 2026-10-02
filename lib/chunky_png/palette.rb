@@ -21,10 +21,27 @@ module ChunkyPNG
     #   which they appeared in the palette chunk, so that this array can be
     #   used for decoding.
     def initialize(enum, decoding_map = nil)
-      super(enum.sort.freeze)
-      @decoding_map = decoding_map if decoding_map
-      @encoding_map = {}
+      ordered_colors = decoding_map || enum.to_a.uniq.sort
+      super(ordered_colors)
+
+      if decoding_map
+        @decoding_map = decoding_map.dup.freeze
+        @encoding_map = Hash[@decoding_map.each_with_index.map { |color, index| [color, index] }]
+      else
+        @decoding_map = nil
+        @encoding_map = {}
+      end
       freeze
+    end
+
+    # Builds a palette instance from colors in their exact palette order.
+    #
+    # @param colors [Enumerable<Integer>] The colors to include, in the order
+    #   in which they should appear in the palette.
+    # @return [ChunkyPNG::Palette] The palette instance.
+    def self.from_ordered_colors(colors)
+      ordered_colors = colors.to_a
+      new(ordered_colors, ordered_colors)
     end
 
     # Builds a palette instance from a PLTE chunk and optionally a tRNS chunk
@@ -73,6 +90,17 @@ module ChunkyPNG
     # @return [ChunkyPNG::Palette] The palette instance.
     def self.from_pixels(pixels)
       new(pixels)
+    end
+
+    # Quantizes multiple images to a single shared palette.
+    # @see ChunkyPNG::Quantizer#quantize
+    def self.quantize(images, options = {})
+      ChunkyPNG::Quantizer.quantize(images, options)
+    end
+
+    class << self
+      alias quantize_images quantize
+      alias quantize_pixels quantize
     end
 
     # Checks whether the size of this palette is suitable for indexed storage.
@@ -165,7 +193,8 @@ module ChunkyPNG
     #
     # @return [ChunkyPNG::Chunk::Transparency] The tRNS chunk.
     def to_trns_chunk
-      ChunkyPNG::Chunk::Transparency.new("tRNS", map { |c| ChunkyPNG::Color.a(c) }.pack("C*"))
+      ordered_colors = @decoding_map || to_a
+      ChunkyPNG::Chunk::Transparency.new("tRNS", ordered_colors.map { |c| ChunkyPNG::Color.a(c) }.pack("C*"))
     end
 
     # Creates a PLTE chunk that corresponds with this palette to store the r,
@@ -180,8 +209,9 @@ module ChunkyPNG
     def to_plte_chunk
       @encoding_map.clear
       colors = []
+      ordered_colors = @decoding_map || to_a
 
-      each_with_index do |color, index|
+      ordered_colors.each_with_index do |color, index|
         @encoding_map[color] = index
         colors += ChunkyPNG::Color.to_truecolor_bytes(color)
       end

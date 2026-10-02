@@ -155,6 +155,7 @@ require "chunky_png/chunk"
 # Colors
 require "chunky_png/palette"
 require "chunky_png/color"
+require "chunky_png/quantizer"
 
 # Geometry
 require "chunky_png/point"
