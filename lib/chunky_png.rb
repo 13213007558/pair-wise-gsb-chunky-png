@@ -20,6 +20,7 @@ require "stringio"
 # {ChunkyPNG::Point}::      geometry helper class representing a 2-dimensional point.
 # {ChunkyPNG::Dimension}::  geometry helper class representing a dimension (i.e. width x height).
 # {ChunkyPNG::Vector}::     geometry helper class representing a series of points.
+# {ChunkyPNG::DistanceTransform}:: computes signed Euclidean distance fields of binary masks.
 #
 # @author Willem van Bergen
 module ChunkyPNG
@@ -160,6 +161,9 @@ require "chunky_png/color"
 require "chunky_png/point"
 require "chunky_png/vector"
 require "chunky_png/dimension"
+
+# Distance transforms
+require "chunky_png/distance_transform"
 
 # Canvas / Image classes
 require "chunky_png/canvas"

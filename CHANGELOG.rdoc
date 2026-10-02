@@ -7,6 +7,10 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Added <tt>ChunkyPNG::DistanceTransform</tt> and <tt>ChunkyPNG::Canvas#signed_distance_field</tt>
+  to compute a signed Euclidean distance field of a thresholded alpha mask, using a linear-time
+  separable algorithm.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 
