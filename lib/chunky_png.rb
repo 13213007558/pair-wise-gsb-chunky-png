@@ -164,3 +164,6 @@ require "chunky_png/dimension"
 # Canvas / Image classes
 require "chunky_png/canvas"
 require "chunky_png/image"
+
+# Progressive decoding
+require "chunky_png/progressive_decoder"

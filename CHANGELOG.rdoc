@@ -7,6 +7,8 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Added <tt>ChunkyPNG::ProgressiveDecoder</tt> to incrementally decode Adam7 interlaced images, emitting an independent snapshot and valid pixel mask after every completed pass.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 
