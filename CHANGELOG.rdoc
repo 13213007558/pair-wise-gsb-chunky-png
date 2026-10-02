@@ -7,6 +7,12 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Added content-aware image shrinking with <tt>ChunkyPNG::Canvas#seam_carve</tt> and
+  <tt>#seam_carve!</tt>, which remove low-energy horizontal and vertical seams. An optional
+  protection mask marks pixels that seams may never cross; the mask is carved in sync with
+  the image, and a <tt>ChunkyPNG::Canvas::SeamCarving::ProtectionConflict</tt> is raised when
+  the requested dimensions cannot be reached without crossing protected pixels.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

@@ -23,6 +23,10 @@ memory leaking image library.
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly
   optimized saving routine.
+- Content-aware shrinking via seam carving: removes low-energy seams so flat
+  background gives way while important content (e.g. a logo) is not
+  deformed. Supports an optional protection mask that seams will never
+  cross.
 - Works on every currently supported Ruby version (2.5+)
 - Interoperability with RMagick if you really have to.
 
@@ -46,6 +50,15 @@ avatar = ChunkyPNG::Image.from_file('avatar.png')
 badge  = ChunkyPNG::Image.from_file('no_ie_badge.png')
 avatar.compose!(badge, 10, 10)
 avatar.save('composited.png', :fast_rgba) # Force the fast saving routine.
+
+# Shrink an image without squashing the important parts: seam carving
+# removes seams from the flattest regions. Pixels marked (non-transparent)
+# in the protection mask are never removed; if the requested size would
+# require crossing them, a ProtectionConflict is raised instead.
+image = ChunkyPNG::Image.from_file('banner.png')
+mask  = ChunkyPNG::Image.from_file('banner_mask.png')
+carved, carved_mask = image.seam_carve(400, 300, mask: mask)
+carved.save('banner_small.png')
 
 # Accessing metadata
 image = ChunkyPNG::Image.from_file('with_metadata.png')
