@@ -14,6 +14,8 @@ memory leaking image library.
 - Decodes any image that the PNG standard allows. This includes all standard
   color modes, all bit depths, all transparency, and interlacing and filtering
   options.
+- Preserves 16-bit per channel grayscale, grayscale alpha, RGB, and RGBA PNGs
+  through the explicit `ChunkyPNG::Canvas16` / `ChunkyPNG::Image16` API.
 - Encodes images supports all color modes (true color, grayscale, and indexed)
   and transparency for all these color modes. The best color mode will be
   chosen automatically, based on the amount of used colors.
@@ -52,6 +54,15 @@ image = ChunkyPNG::Image.from_file('with_metadata.png')
 puts image.metadata['Title']
 image.metadata['Author'] = 'Willem van Bergen'
 image.save('with_metadata.png') # Overwrite file
+
+# Preserve all 16-bit samples (existing Canvas remains 8-bit)
+image16 = ChunkyPNG::Image16.from_file('deep.png')
+image16[0, 0] = ChunkyPNG::Color16.rgba(0x0100, 0x0101, 0x0102, 0xffff)
+image16.save('deep-lossless.png', interlace: true, filtering: ChunkyPNG::FILTER_PAETH)
+
+# Explicit precision conversion
+sample16 = ChunkyPNG::Color16.from_8bit(255) # 0xffff via PNG bit replication
+sample8  = ChunkyPNG::Color16.to_8bit(0x0101) # 1 via round-to-nearest
 
 # Low level access to PNG chunks
 png_stream = ChunkyPNG::Datastream.from_file('filename.png')
