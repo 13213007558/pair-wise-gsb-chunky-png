@@ -19,6 +19,9 @@ memory leaking image library.
   chosen automatically, based on the amount of used colors.
 - R/W access to the image's pixels.
 - R/W access to all image metadata that is stored in chunks.
+- Reads and writes animated PNGs (APNG), preserving the loop count, frame
+  delays and frame rectangles, and rendering the fully composed canvas for
+  every frame.
 - Memory efficient (uses a Fixnum, i.e. 4 or 8 bytes of memory per pixel,
   depending on the hardware)
 - Reasonably fast for Ruby standards, by only using integer math and a highly

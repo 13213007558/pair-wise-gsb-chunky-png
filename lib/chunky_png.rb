@@ -102,6 +102,35 @@ module ChunkyPNG
   # @private
   FILTER_PAETH          = 4
 
+  ### APNG dispose operation constants
+
+  # Indicates that the frame's region should be kept as is after rendering
+  # the frame.
+  # @private
+  APNG_DISPOSE_OP_NONE       = 0
+
+  # Indicates that the frame's region should be cleared to fully transparent
+  # black after rendering the frame.
+  # @private
+  APNG_DISPOSE_OP_BACKGROUND = 1
+
+  # Indicates that the frame's region should be reverted to the contents from
+  # before rendering the frame.
+  # @private
+  APNG_DISPOSE_OP_PREVIOUS   = 2
+
+  ### APNG blend operation constants
+
+  # Indicates that the frame's pixels should replace the region on the output
+  # buffer.
+  # @private
+  APNG_BLEND_OP_SOURCE = 0
+
+  # Indicates that the frame's pixels should be alpha-composited onto the
+  # output buffer.
+  # @private
+  APNG_BLEND_OP_OVER   = 1
+
   ###################################################
   # ChunkyPNG exception classes
   ###################################################
@@ -164,3 +193,6 @@ require "chunky_png/dimension"
 # Canvas / Image classes
 require "chunky_png/canvas"
 require "chunky_png/image"
+
+# Animated PNG (APNG) support
+require "chunky_png/animation"

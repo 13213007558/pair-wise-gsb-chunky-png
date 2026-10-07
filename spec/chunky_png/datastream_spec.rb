@@ -137,4 +137,49 @@ describe ChunkyPNG::Datastream do
       expect(parsed.translated_keyword.encoding).to eq(Encoding::UTF_8)
     end
   end
+
+  describe "animated PNGs" do
+    def animated_png_blob
+      animation = ChunkyPNG::Animation.new(2, 2, num_plays: 2)
+      animation.frames << ChunkyPNG::Animation::Frame.new(ChunkyPNG::Canvas.new(2, 2, ChunkyPNG::Color::WHITE))
+      animation.frames << ChunkyPNG::Animation::Frame.new(ChunkyPNG::Canvas.new(1, 1, ChunkyPNG::Color::BLACK))
+      animation.to_blob
+    end
+
+    it "is not animated for regular PNGs" do
+      ds = ChunkyPNG::Datastream.from_blob(ChunkyPNG::Canvas.new(1, 1).to_blob)
+      expect(ds).to_not be_animated
+      expect(ds.animation_frames).to be_empty
+    end
+
+    it "parses the animation control chunk and animation frames" do
+      ds = ChunkyPNG::Datastream.from_blob(animated_png_blob)
+      expect(ds).to be_animated
+      expect(ds.animation_control_chunk.num_frames).to eql 2
+      expect(ds.animation_control_chunk.num_plays).to eql 2
+      expect(ds.animation_frames.length).to eql 2
+    end
+
+    it "marks the first frame as using the default image" do
+      ds = ChunkyPNG::Datastream.from_blob(animated_png_blob)
+      expect(ds.animation_frames[0].uses_default_image).to eql true
+      expect(ds.animation_frames[1].uses_default_image).to eql false
+      expect(ds.animation_frames[1].data_chunks.length).to eql 1
+    end
+
+    it "round-trips the chunk structure of an animated PNG" do
+      types = ChunkyPNG::Datastream.from_blob(animated_png_blob).chunks.map(&:type)
+      expect(types).to eql %w[IHDR acTL fcTL IDAT fcTL fdAT IEND]
+    end
+
+    it "raises an error for an fdAT chunk without a preceding fcTL chunk" do
+      ds = ChunkyPNG::Datastream.new
+      ds.header_chunk = ChunkyPNG::Chunk::Header.new(width: 1, height: 1)
+      ds.animation_control_chunk = ChunkyPNG::Chunk::AnimationControl.new(num_frames: 1)
+      ds.data_chunks = ChunkyPNG::Chunk::ImageData.split_in_chunks(ChunkyPNG::Canvas.new(1, 1).send(:encode_png_pixelstream))
+      ds.other_chunks << ChunkyPNG::Chunk::FrameData.new(sequence_number: 0, data: "")
+      ds.end_chunk = ChunkyPNG::Chunk::End.new
+      expect { ChunkyPNG::Datastream.from_blob(ds.to_blob) }.to raise_error(ChunkyPNG::ExpectationFailed)
+    end
+  end
 end

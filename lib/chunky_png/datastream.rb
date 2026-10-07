@@ -41,10 +41,46 @@ module ChunkyPNG
     # @return [ChunkyPNG::Chunk::Header]
     attr_accessor :end_chunk
 
+    # The chunk that marks this datastream as an animated PNG (APNG), and
+    # holds the number of frames and plays. +nil+ for regular PNG images.
+    # @return [ChunkyPNG::Chunk::AnimationControl, nil]
+    attr_accessor :animation_control_chunk
+
+    # The animation frames of this datastream, in the order in which their
+    # frame control chunks appear in the stream.
+    # @return [Array<ChunkyPNG::Datastream::AnimationFrame>]
+    attr_reader :animation_frames
+
+    # Represents a single frame of an animated PNG (APNG) datastream: its
+    # frame control chunk, and the chunks that hold the frame's pixel data.
+    #
+    # If the frame's control chunk appeared before the IDAT chunks, the frame
+    # uses the default image as its pixel data, and +uses_default_image+ will
+    # be true. In that case, the pixel data is stored in the datastream's
+    # +data_chunks+ instead of in this frame's +data_chunks+.
+    class AnimationFrame
+      # @return [ChunkyPNG::Chunk::FrameControl]
+      attr_accessor :control_chunk
+
+      # @return [Array<ChunkyPNG::Chunk::FrameData>]
+      attr_accessor :data_chunks
+
+      # @return [true, false] Whether this frame's pixel data is the
+      #   datastream's default image (IDAT chunks).
+      attr_accessor :uses_default_image
+
+      def initialize(control_chunk)
+        @control_chunk = control_chunk
+        @data_chunks = []
+        @uses_default_image = false
+      end
+    end
+
     # Initializes a new Datastream instance.
     def initialize
-      @other_chunks = []
-      @data_chunks  = []
+      @other_chunks     = []
+      @data_chunks      = []
+      @animation_frames = []
     end
 
     ##############################################################################
@@ -84,9 +120,22 @@ module ChunkyPNG
             when ChunkyPNG::Chunk::Header       then ds.header_chunk = chunk
             when ChunkyPNG::Chunk::Palette      then ds.palette_chunk = chunk
             when ChunkyPNG::Chunk::Transparency then ds.transparency_chunk = chunk
-            when ChunkyPNG::Chunk::ImageData    then ds.data_chunks << chunk
             when ChunkyPNG::Chunk::Physical     then ds.physical_chunk = chunk
             when ChunkyPNG::Chunk::End          then ds.end_chunk = chunk
+            when ChunkyPNG::Chunk::AnimationControl
+              ds.animation_control_chunk = chunk
+            when ChunkyPNG::Chunk::FrameControl
+              ds.animation_frames << ChunkyPNG::Datastream::AnimationFrame.new(chunk)
+            when ChunkyPNG::Chunk::FrameData
+              frame = ds.animation_frames.last
+              raise ChunkyPNG::ExpectationFailed, "fdAT chunk found without preceding fcTL chunk!" if frame.nil? || frame.uses_default_image
+              frame.data_chunks << chunk
+            when ChunkyPNG::Chunk::ImageData
+              ds.data_chunks << chunk
+              frame = ds.animation_frames.last
+              if frame && frame.data_chunks.empty? && !frame.uses_default_image
+                frame.uses_default_image = true
+              end
             else ds.other_chunks << chunk
           end
         end
@@ -127,8 +176,26 @@ module ChunkyPNG
       yield(palette_chunk)      if palette_chunk
       yield(transparency_chunk) if transparency_chunk
       yield(physical_chunk)     if physical_chunk
-      data_chunks.each { |chunk| yield(chunk) }
+      if animated?
+        yield(animation_control_chunk)
+        default_image_in_animation = animation_frames.first && animation_frames.first.uses_default_image
+        data_chunks.each { |chunk| yield(chunk) } unless default_image_in_animation
+        animation_frames.each do |frame|
+          yield(frame.control_chunk)
+          chunks = frame.uses_default_image ? data_chunks : frame.data_chunks
+          chunks.each { |chunk| yield(chunk) }
+        end
+      else
+        data_chunks.each { |chunk| yield(chunk) }
+      end
       yield(end_chunk)
+    end
+
+    # Returns whether this datastream is an animated PNG (APNG).
+    # @return [true, false] True if this datastream contains an animation
+    #   control chunk.
+    def animated?
+      !animation_control_chunk.nil?
     end
 
     # Returns an enumerator instance for this datastream's chunks.
