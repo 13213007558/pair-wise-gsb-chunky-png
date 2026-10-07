@@ -7,6 +7,11 @@ The file documents the changes to this library over the different versions.
 
 === Unreleased changes
 
+- Add support for reading and writing animated PNG (APNG) files via
+  <tt>ChunkyPNG::Animation</tt>, preserving the loop count, per-frame delays
+  and frame regions, and rendering the full output canvas per frame with the
+  correct blend and dispose operations.
+
 === 1.4.0 - 2020-12-28
 
 - Add compatibility for Ruby 3.0. 

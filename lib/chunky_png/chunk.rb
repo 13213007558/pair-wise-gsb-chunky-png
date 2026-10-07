@@ -450,6 +450,122 @@ module ChunkyPNG
       end
     end
 
+    # The animation control (acTL) chunk signals that this PNG stream is an
+    # animated PNG (APNG). It contains the number of frames in the animation
+    # and the number of times the animation should be played.
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification
+    class AnimationControl < Base
+      attr_accessor :num_frames, :num_plays
+
+      def initialize(attrs = {})
+        super("acTL", attrs)
+        @num_plays ||= 0
+      end
+
+      # Reads the animation control chunk.
+      # @param type [String] The four character chunk type indicator (= "acTL").
+      # @param content [String] The 8 bytes of content read from the chunk.
+      # @return [ChunkyPNG::Chunk::AnimationControl] The new AnimationControl
+      #   chunk instance.
+      def self.read(type, content)
+        num_frames, num_plays = content.unpack("NN")
+        new(num_frames: num_frames, num_plays: num_plays)
+      end
+
+      # Returns the content for this chunk when it gets written to a file.
+      # @return [String] The 8-byte content for the animation control chunk.
+      def content
+        [num_frames, num_plays].pack("NN")
+      end
+    end
+
+    # The frame control (fcTL) chunk precedes every frame of an animated PNG
+    # and describes the frame's dimensions, position on the output canvas,
+    # display delay, and its dispose and blend operations.
+    #
+    # @see https://wiki.mozilla.org/APNG_Specification
+    class FrameControl < Base
+      attr_accessor :sequence_number, :width, :height, :x_offset, :y_offset,
+        :delay_num, :delay_den, :dispose_op, :blend_op
+
+      def initialize(attrs = {})
+        super("fcTL", attrs)
+        @x_offset   ||= 0
+        @y_offset   ||= 0
+        @delay_num  ||= 1
+        @delay_den  ||= 100
+        @dispose_op ||= 0
+        @blend_op   ||= 0
+      end
+
+      # Reads the frame control chunk.
+      # @param type [String] The four character chunk type indicator (= "fcTL").
+      # @param content [String] The 26 bytes of content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameControl] The new FrameControl chunk
+      #   instance.
+      def self.read(type, content)
+        fields = content.unpack("N5n2C2")
+        new(
+          sequence_number: fields[0],
+          width: fields[1],
+          height: fields[2],
+          x_offset: fields[3],
+          y_offset: fields[4],
+          delay_num: fields[5],
+          delay_den: fields[6],
+          dispose_op: fields[7],
+          blend_op: fields[8]
+        )
+      end
+
+      # Returns the content for this chunk when it gets written to a file.
+      # @return [String] The 26-byte content for the frame control chunk.
+      def content
+        [
+          sequence_number,
+          width,
+          height,
+          x_offset,
+          y_offset,
+          delay_num,
+          delay_den,
+          dispose_op,
+          blend_op,
+        ].pack("N5n2C2")
+      end
+    end
+
+    # A frame data (fdAT) chunk holds (part of) the compressed pixel data of
+    # one of the frames of an animated PNG. It has the same structure as an
+    # image data (IDAT) chunk, except that the compressed data is preceded by
+    # a 4-byte sequence number.
+    #
+    # @see ChunkyPNG::Chunk::ImageData
+    # @see https://wiki.mozilla.org/APNG_Specification
+    class FrameData < Base
+      attr_accessor :sequence_number, :data
+
+      def initialize(attrs = {})
+        super("fdAT", attrs)
+      end
+
+      # Reads the frame data chunk.
+      # @param type [String] The four character chunk type indicator (= "fdAT").
+      # @param content [String] The content read from the chunk.
+      # @return [ChunkyPNG::Chunk::FrameData] The new FrameData chunk instance.
+      def self.read(type, content)
+        sequence_number, data = content.unpack("Na*")
+        new(sequence_number: sequence_number, data: data)
+      end
+
+      # Returns the content for this chunk when it gets written to a file.
+      # @return [String] The sequence number, followed by the frame data.
+      def content
+        [sequence_number].pack("N") + data
+      end
+    end
+
     # Maps chunk types to classes, based on the four byte chunk type indicator
     # at the beginning of a chunk.
     #
@@ -461,6 +577,9 @@ module ChunkyPNG
       "IHDR" => Header,
       "IEND" => End,
       "IDAT" => ImageData,
+      "acTL" => AnimationControl,
+      "fcTL" => FrameControl,
+      "fdAT" => FrameData,
       "PLTE" => Palette,
       "tRNS" => Transparency,
       "tEXt" => Text,
